@@ -1,0 +1,60 @@
+services:
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: habitflow-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: habitflow
+      POSTGRES_USER: habitflow
+      POSTGRES_PASSWORD: habitflow
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: habitflow-backend
+
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    environment:
+      DATABASE_URL: postgresql+asyncpg://habitflow:habitflow@postgres:5432/habitflow
+
+    volumes:
+      - ./backend:/app
+
+    depends_on:
+      - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: habitflow-frontend
+
+    restart: unless-stopped
+
+    ports:
+      - "5173:5173"
+
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
