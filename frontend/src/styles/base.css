@@ -3352,13 +3352,47 @@ svg {
   text-transform: uppercase;
 }
 
+@media (max-width: 1400px) {
+  .finance-data-table--recurring .finance-data-table__head {
+    display: none;
+  }
+
+  .finance-data-table--recurring .finance-data-row {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.9rem 1.25rem;
+  }
+
+  .finance-data-table--recurring .finance-data-cell > span:not(.recurring-status-pill) {
+    display: block;
+    margin-bottom: 0.2rem;
+  }
+
+  .finance-data-table--recurring .finance-data-cell--primary,
+  .finance-data-table--recurring .finance-data-row__actions {
+    grid-column: 1 / -1;
+  }
+
+  .finance-data-table--recurring .finance-data-cell--amount {
+    grid-column: 2;
+    align-self: end;
+    text-align: right;
+  }
+
+  .finance-data-table--recurring .finance-data-row__actions {
+    justify-self: start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding-top: 0.1rem;
+  }
+}
+
 @media (max-width: 1280px) {
   .finance-data-table__head {
     display: none;
   }
 
-  .finance-data-table--transactions .finance-data-row,
-  .finance-data-table--recurring .finance-data-row {
+  .finance-data-table--transactions .finance-data-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
@@ -3389,8 +3423,7 @@ svg {
     display: none;
   }
 
-  .finance-data-table--transactions .finance-data-row,
-  .finance-data-table--recurring .finance-data-row {
+  .finance-data-table--transactions .finance-data-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
@@ -3436,6 +3469,11 @@ svg {
   .finance-data-table--transactions .finance-data-row,
   .finance-data-table--recurring .finance-data-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-data-table--recurring .finance-data-cell--amount {
+    grid-column: auto;
+    text-align: left;
   }
 
   .finance-tab-panel {
