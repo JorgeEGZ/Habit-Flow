@@ -12,8 +12,11 @@ export const useFinancesStore = defineStore('finances', {
     loading: false,
     loadingTransactions: false,
     loadingRecurring: false,
+    loadingSpendingByCategory: false,
     submitting: false,
     error: '',
+    spendingByCategory: null,
+    spendingByCategoryError: '',
   }),
   actions: {
     async fetchAccounts() {
@@ -55,6 +58,25 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.loadingTransactions = false
+      }
+    },
+
+    async fetchSpendingByCategory(month) {
+      this.loadingSpendingByCategory = true
+      this.spendingByCategoryError = ''
+      this.spendingByCategory = null
+
+      try {
+        this.spendingByCategory = await financesService.getSpendingByCategory(month)
+        return this.spendingByCategory
+      } catch (error) {
+        this.spendingByCategoryError = getApiErrorMessage(
+          error,
+          'No fue posible cargar los gastos por categoría.',
+        )
+        throw error
+      } finally {
+        this.loadingSpendingByCategory = false
       }
     },
 

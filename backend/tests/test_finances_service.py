@@ -92,6 +92,107 @@ async def test_account_crud_and_dynamic_balance(session: AsyncSession) -> None:
     assert updated.current_balance == 1300
 
 
+async def test_spending_by_category_aggregates_monthly_expenses(session: AsyncSession) -> None:
+    user = await _make_user(session, "spending-owner@example.com")
+    other_user = await _make_user(session, "spending-other@example.com")
+    account = await finances_service.create_account(
+        session,
+        user_id=user.id,
+        payload=AccountCreate(name="Cash", type="cash", initial_balance=0),
+    )
+    other_account = await finances_service.create_account(
+        session,
+        user_id=other_user.id,
+        payload=AccountCreate(name="Other cash", type="cash", initial_balance=0),
+    )
+    food = await finances_service.create_category(
+        session,
+        user_id=user.id,
+        payload=CategoryCreate(name="Food", type="expense"),
+    )
+    transport = await finances_service.create_category(
+        session,
+        user_id=user.id,
+        payload=CategoryCreate(name="Transport", type="expense"),
+    )
+    income = await finances_service.create_category(
+        session,
+        user_id=user.id,
+        payload=CategoryCreate(name="Salary", type="income"),
+    )
+    other_food = await finances_service.create_category(
+        session,
+        user_id=other_user.id,
+        payload=CategoryCreate(name="Food", type="expense"),
+    )
+
+    fixtures = [
+        (account.id, food.id, "expense", 100, date(2026, 7, 1)),
+        (account.id, food.id, "expense", 50, date(2026, 7, 31)),
+        (account.id, transport.id, "expense", 150, date(2026, 7, 16)),
+        (account.id, food.id, "expense", 900, date(2026, 6, 30)),
+        (account.id, food.id, "expense", 800, date(2026, 8, 1)),
+        (account.id, income.id, "income", 1000, date(2026, 7, 10)),
+    ]
+    for account_id, category_id, entry_type, amount, transaction_date in fixtures:
+        await finances_service.create_transaction(
+            session,
+            user_id=user.id,
+            payload=TransactionCreate(
+                account_id=account_id,
+                category_id=category_id,
+                type=entry_type,
+                amount=amount,
+                description=None,
+                transaction_date=transaction_date,
+            ),
+        )
+    await finances_service.create_transaction(
+        session,
+        user_id=other_user.id,
+        payload=TransactionCreate(
+            account_id=other_account.id,
+            category_id=other_food.id,
+            type="expense",
+            amount=777,
+            description=None,
+            transaction_date=date(2026, 7, 15),
+        ),
+    )
+
+    summary = await finances_service.get_spending_by_category(
+        session,
+        user_id=user.id,
+        month="2026-07",
+    )
+
+    assert summary.month == "2026-07"
+    assert summary.period_start == date(2026, 7, 1)
+    assert summary.period_end == date(2026, 7, 31)
+    assert summary.total_expenses == 300
+    assert [item.category_name for item in summary.categories] == ["Food", "Transport"]
+    assert [(item.amount, item.transaction_count) for item in summary.categories] == [
+        (150, 2),
+        (150, 1),
+    ]
+    assert [item.share_percentage for item in summary.categories] == [50.0, 50.0]
+
+    empty_summary = await finances_service.get_spending_by_category(
+        session,
+        user_id=user.id,
+        month="2026-09",
+    )
+    assert empty_summary.total_expenses == 0
+    assert empty_summary.categories == []
+
+    default_month_summary = await finances_service.get_spending_by_category(
+        session,
+        user_id=user.id,
+        today=date(2026, 7, 20),
+    )
+    assert default_month_summary.month == "2026-07"
+
+
 async def test_category_crud_and_type_validation(session: AsyncSession) -> None:
     user = await _make_user(session, "fa2@example.com")
     account = await finances_service.create_account(

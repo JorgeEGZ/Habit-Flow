@@ -42,6 +42,64 @@
 
       <section
         v-if="isMovementsWorkspace"
+        class="finance-spending-insight"
+        aria-labelledby="spending-by-category-title"
+      >
+        <header class="finance-spending-insight__header">
+          <div>
+            <p class="finance-spending-insight__eyebrow">Análisis mensual</p>
+            <h2 id="spending-by-category-title">Gastos por categoría</h2>
+            <p>Identifica las categorías que concentran tus gastos del mes.</p>
+          </div>
+          <label class="finance-spending-insight__month">
+            <span>Mes</span>
+            <input v-model="spendingMonth" class="finance-input" type="month" />
+          </label>
+        </header>
+
+        <div v-if="financesStore.loadingSpendingByCategory" class="finance-spending-skeleton" aria-label="Cargando gastos por categoría">
+          <span v-for="index in 4" :key="index" class="finance-spending-skeleton__row"></span>
+        </div>
+        <p v-else-if="financesStore.spendingByCategoryError" class="finance-spending-insight__error" role="alert">
+          {{ financesStore.spendingByCategoryError }}
+        </p>
+        <div v-else-if="!spendingByCategory?.categories.length" class="dashboard-empty">
+          No hay gastos registrados en este mes.
+        </div>
+        <div v-else class="finance-spending-list">
+          <div class="finance-spending-list__summary">
+            <span>Gastos del mes</span>
+            <strong>{{ formatCurrencyCop(spendingByCategory.total_expenses) }}</strong>
+          </div>
+          <ol class="finance-spending-list__items">
+            <li v-for="category in spendingByCategory.categories" :key="category.category_id" class="finance-spending-item">
+              <div class="finance-spending-item__header">
+                <div>
+                  <strong>{{ category.category_name }}</strong>
+                  <small>{{ movementCountLabel(category.transaction_count) }}</small>
+                </div>
+                <div class="finance-spending-item__amount">
+                  <strong>{{ formatCurrencyCop(category.amount) }}</strong>
+                  <span>{{ formatPercentage(category.share_percentage) }}</span>
+                </div>
+              </div>
+              <div
+                class="finance-spending-item__bar"
+                role="progressbar"
+                :aria-label="`${category.category_name}: ${formatPercentage(category.share_percentage)} del gasto mensual`"
+                :aria-valuenow="category.share_percentage"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              >
+                <span :style="{ width: `${category.share_percentage}%` }"></span>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section
+        v-if="isMovementsWorkspace"
         class="finance-tab-panel"
       >
         <header class="finance-panel-header">
@@ -538,6 +596,8 @@ const accountFormError = ref('')
 const categoryFormError = ref('')
 const transactionFormError = ref('')
 const recurringFormError = ref('')
+const spendingMonth = ref('')
+const appliedSpendingMonth = ref('')
 
 const accountForm = reactive({
   name: '',
@@ -626,6 +686,7 @@ const accounts = computed(() => financesStore.accounts)
 const categories = computed(() => financesStore.categories)
 const transactions = computed(() => financesStore.transactions)
 const recurringRules = computed(() => financesStore.recurring)
+const spendingByCategory = computed(() => financesStore.spendingByCategory)
 const recurringLoading = computed(() => loadingFinanceData.value || financesStore.loadingRecurring)
 const transactionsLoading = computed(() => loadingFinanceData.value || financesStore.loadingTransactions)
 
@@ -744,6 +805,12 @@ watch(
   },
 )
 
+watch(spendingMonth, (month) => {
+  if (month && month !== appliedSpendingMonth.value) {
+    void loadSpendingByCategory(month)
+  }
+})
+
 function accountTypeLabel(type) {
   return accountTypes.find((entry) => entry.value === type)?.label ?? type
 }
@@ -791,6 +858,14 @@ function categoryLabel(categoryId) {
 function formatTransactionAmount(transaction) {
   const prefix = transaction.type === 'expense' ? '- ' : '+ '
   return `${prefix}${formatCurrencyCop(transaction.amount)}`
+}
+
+function formatPercentage(value) {
+  return `${Number(value || 0).toFixed(2)}%`
+}
+
+function movementCountLabel(count) {
+  return `${count} ${count === 1 ? 'movimiento' : 'movimientos'}`
 }
 
 function resetAccountForm() {
@@ -1059,9 +1134,23 @@ async function loadFinanceData() {
       financesStore.fetchTransactions(),
       financesStore.fetchRecurring(),
       dashboardStore.fetchFinances(),
+      loadSpendingByCategory(),
     ])
   } finally {
     loadingFinanceData.value = false
+  }
+}
+
+async function loadSpendingByCategory(month = spendingMonth.value || undefined) {
+  try {
+    const summary = await financesStore.fetchSpendingByCategory(month)
+    appliedSpendingMonth.value = summary.month
+    if (!spendingMonth.value) {
+      spendingMonth.value = summary.month
+    }
+    return summary
+  } catch {
+    return null
   }
 }
 
@@ -1117,6 +1206,7 @@ async function handleTransactionSubmit() {
       await financesStore.createTransaction(payload)
     }
     await refreshFinanceSummary()
+    await loadSpendingByCategory()
     resetTransactionForm()
   } catch (error) {
     transactionFormError.value = error instanceof Error ? error.message : 'Revisa los datos e inténtalo de nuevo.'
@@ -1179,6 +1269,7 @@ async function handleDeleteTransaction(transaction) {
   try {
     await financesStore.deleteTransaction(transaction.id)
     await refreshFinanceSummary()
+    await loadSpendingByCategory()
     if (editingTransactionId.value === transaction.id) {
       resetTransactionForm()
     }

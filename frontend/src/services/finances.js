@@ -43,6 +43,13 @@ export async function listTransactions(params = {}) {
   return data
 }
 
+export async function getSpendingByCategory(month) {
+  const { data } = await api.get('/finances/insights/spending-by-category', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
 export async function getTransaction(transactionId) {
   const { data } = await api.get(`/finances/transactions/${transactionId}`)
   return data

@@ -140,3 +140,19 @@ class TransactionFilter(BaseModel):
     category_id: uuid.UUID | None = None
     from_date: date | None = None
     to_date: date | None = None
+
+
+class SpendingByCategoryItem(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    amount: int = Field(gt=0)
+    transaction_count: int = Field(gt=0)
+    share_percentage: float = Field(ge=0, le=100)
+
+
+class SpendingByCategoryRead(BaseModel):
+    month: str
+    period_start: date
+    period_end: date
+    total_expenses: int = Field(ge=0)
+    categories: list[SpendingByCategoryItem]

@@ -1,8 +1,12 @@
 """HTTP integration tests for the finances routes."""
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from httpx import AsyncClient
+
+from app.modules.finances import service as finances_service
 
 
 pytestmark = pytest.mark.asyncio
@@ -28,6 +32,47 @@ def _auth_headers(token: str) -> dict[str, str]:
 async def test_accounts_require_bearer(client: AsyncClient) -> None:
     response = await client.get("/api/v1/finances/accounts")
     assert response.status_code == 401
+
+
+async def test_spending_by_category_requires_bearer(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/finances/insights/spending-by-category")
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
+async def test_spending_by_category_rejects_invalid_month(
+    client: AsyncClient,
+    month: str,
+) -> None:
+    token = await _register_and_login(client, email=f"invalid-month-{month}@example.com")
+    response = await client.get(
+        "/api/v1/finances/insights/spending-by-category",
+        headers=_auth_headers(token),
+        params={"month": month},
+    )
+    assert response.status_code == 422
+
+
+async def test_spending_by_category_uses_current_app_month_when_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 7, 22))
+    token = await _register_and_login(client, email="default-spending-month@example.com")
+
+    response = await client.get(
+        "/api/v1/finances/insights/spending-by-category",
+        headers=_auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "month": "2026-07",
+        "period_start": "2026-07-01",
+        "period_end": "2026-07-31",
+        "total_expenses": 0,
+        "categories": [],
+    }
 
 
 async def test_account_crud(client: AsyncClient) -> None:

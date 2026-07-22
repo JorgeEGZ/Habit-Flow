@@ -17,12 +17,15 @@ from app.modules.finances.schemas import (
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
+    SpendingByCategoryRead,
     TransactionCreate,
     TransactionRead,
     TransactionUpdate,
 )
 
 router = APIRouter(prefix="/finances", tags=["finances"])
+
+MONTH_QUERY_PATTERN = r"^[1-9]\d{3}-(0[1-9]|1[0-2])$"
 
 
 # ---------- Accounts ----------
@@ -130,6 +133,22 @@ async def delete_category(
 
 
 # ---------- Transactions ----------
+
+@router.get(
+    "/insights/spending-by-category",
+    response_model=SpendingByCategoryRead,
+)
+async def get_spending_by_category(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> SpendingByCategoryRead:
+    return await finances_service.get_spending_by_category(
+        session,
+        user_id=user.id,
+        month=month,
+    )
+
 
 @router.get("/transactions", response_model=list[TransactionRead])
 async def list_transactions(

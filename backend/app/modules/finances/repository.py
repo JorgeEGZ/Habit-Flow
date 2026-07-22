@@ -318,6 +318,40 @@ async def delete_transaction(session: AsyncSession, transaction: Transaction) ->
     await session.commit()
 
 
+async def get_expense_spending_by_category(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    period_start: date,
+    period_end: date,
+) -> list[tuple[uuid.UUID, str, int, int]]:
+    total_amount = func.sum(Transaction.amount)
+    transaction_count = func.count(Transaction.id)
+    stmt = (
+        select(
+            Category.id,
+            Category.name,
+            total_amount.label("amount"),
+            transaction_count.label("transaction_count"),
+        )
+        .join(Category, Category.id == Transaction.category_id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.type == ENTRY_EXPENSE,
+            Transaction.transaction_date >= period_start,
+            Transaction.transaction_date <= period_end,
+        )
+        .group_by(Category.id, Category.name)
+        .having(total_amount > 0)
+        .order_by(total_amount.desc(), Category.name.asc(), Category.id.asc())
+    )
+    result = await session.execute(stmt)
+    return [
+        (row[0], row[1], int(row[2]), int(row[3]))
+        for row in result.all()
+    ]
+
+
 # ---------- Recurring transactions ----------
 
 async def get_recurring_by_id_and_user(

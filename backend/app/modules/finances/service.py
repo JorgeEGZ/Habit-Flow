@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
+from app.core.config import get_app_timezone, get_settings
 from app.core.exceptions import (
     AccountNotFound,
     CategoryNotFound,
@@ -22,10 +25,15 @@ from app.modules.finances.schemas import (
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
+    SpendingByCategoryItem,
+    SpendingByCategoryRead,
     TransactionCreate,
     TransactionRead,
     TransactionUpdate,
 )
+
+
+MONTH_PATTERN = re.compile(r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")
 
 
 def _validate_positive_amount(amount: int, *, label: str) -> None:
@@ -46,6 +54,41 @@ def _attach_current_balance(account: Account, movement: int) -> Account:
 def _validate_category_match(entry_type: str, category: Category) -> None:
     if category.type != entry_type:
         raise ValidationError("Category type must match transaction type.")
+
+
+def current_app_date() -> date:
+    settings = get_settings()
+    return datetime.now(timezone.utc).astimezone(
+        get_app_timezone(settings.app_timezone)
+    ).date()
+
+
+def _spending_month_bounds(month: str | None, *, today: date) -> tuple[str, date, date]:
+    if month is None:
+        year = today.year
+        month_number = today.month
+    else:
+        if not MONTH_PATTERN.fullmatch(month):
+            raise ValueError("Month must use YYYY-MM format.")
+        year, month_number = (int(part) for part in month.split("-"))
+
+    period_start = date(year, month_number, 1)
+    if month_number == 12:
+        next_month_start = date(year + 1, 1, 1)
+    else:
+        next_month_start = date(year, month_number + 1, 1)
+    period_end = next_month_start - timedelta(days=1)
+    return period_start.strftime("%Y-%m"), period_start, period_end
+
+
+def _share_percentage(amount: int, total: int) -> float:
+    if total == 0:
+        return 0.0
+    return float(
+        (Decimal(amount) * Decimal("100") / Decimal(total)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
 
 
 async def _get_account_or_404(session, *, user_id: uuid.UUID, account_id: uuid.UUID) -> Account:
@@ -331,6 +374,43 @@ async def delete_transaction(session, *, user_id: uuid.UUID, transaction_id: uui
         session, user_id=user_id, transaction_id=transaction_id
     )
     await finances_repo.delete_transaction(session, transaction)
+
+
+async def get_spending_by_category(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+    today: date | None = None,
+) -> SpendingByCategoryRead:
+    selected_month, period_start, period_end = _spending_month_bounds(
+        month,
+        today=today or current_app_date(),
+    )
+    rows = await finances_repo.get_expense_spending_by_category(
+        session,
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    total_expenses = sum(row[2] for row in rows)
+
+    return SpendingByCategoryRead(
+        month=selected_month,
+        period_start=period_start,
+        period_end=period_end,
+        total_expenses=total_expenses,
+        categories=[
+            SpendingByCategoryItem(
+                category_id=category_id,
+                category_name=category_name,
+                amount=amount,
+                transaction_count=transaction_count,
+                share_percentage=_share_percentage(amount, total_expenses),
+            )
+            for category_id, category_name, amount, transaction_count in rows
+        ],
+    )
 
 
 # ---------- Recurring transactions ----------
