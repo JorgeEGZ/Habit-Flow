@@ -4,13 +4,14 @@ Run with: ``pytest tests/test_habits_routes.py``.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
+from app.modules.habits import routes as habits_routes
 from app.modules.users.models import User
 
 
@@ -54,6 +55,80 @@ async def test_list_habits_requires_bearer(client: AsyncClient) -> None:
 async def test_create_habit_requires_bearer(client: AsyncClient) -> None:
     response = await client.post("/api/v1/habits", json={"title": "X", "tracking_mode": "boolean"})
     assert response.status_code == 401
+
+
+async def test_app_timezone_current_date_uses_bogota_offset() -> None:
+    assert habits_routes._current_date_in_timezone(
+        "America/Bogota",
+        now=datetime(2026, 7, 15, 3, tzinfo=timezone.utc),
+    ) == date(2026, 7, 14)
+
+
+# ---------- Progress ----------
+
+async def test_progress_route_uses_app_timezone_when_as_of_is_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    token = await _register_and_login(client, email="progress-timezone@example.com")
+    created = await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(token),
+        json={"title": "Meditate", "tracking_mode": "boolean"},
+    )
+    captured_timezone: list[str] = []
+
+    def _fixed_today(timezone_name: str, *, now=None) -> date:
+        captured_timezone.append(timezone_name)
+        return date(2026, 7, 15)
+
+    monkeypatch.setattr(habits_routes, "_current_date_in_timezone", _fixed_today)
+    response = await client.get("/api/v1/habits/progress", headers=_auth_headers(token))
+
+    assert response.status_code == 200
+    assert captured_timezone == ["America/Bogota"]
+    body = response.json()
+    assert body[0]["habit_id"] == created.json()["id"]
+    assert body[0]["period_start"] == "2026-07-15"
+
+
+async def test_progress_route_rejects_future_as_of(client: AsyncClient) -> None:
+    token = await _register_and_login(client, email="progress-future-route@example.com")
+    response = await client.get(
+        "/api/v1/habits/progress",
+        headers=_auth_headers(token),
+        params={"as_of": (date.today() + timedelta(days=1)).isoformat()},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
+
+
+async def test_progress_route_is_user_scoped_and_not_captured_as_habit_id(
+    client: AsyncClient,
+) -> None:
+    alice_token = await _register_and_login(client, email="progress-alice@example.com")
+    bob_token = await _register_and_login(client, email="progress-bob@example.com")
+    alice_habit = await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(alice_token),
+        json={"title": "Alice habit", "tracking_mode": "boolean"},
+    )
+    await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(bob_token),
+        json={"title": "Bob habit", "tracking_mode": "boolean"},
+    )
+
+    response = await client.get(
+        "/api/v1/habits/progress",
+        headers=_auth_headers(alice_token),
+        params={"as_of": date.today().isoformat()},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["habit_id"] for item in body] == [alice_habit.json()["id"]]
 
 
 # ---------- Habit CRUD ----------
@@ -129,6 +204,102 @@ async def test_create_numeric_habit_success(client: AsyncClient) -> None:
     body = r.json()
     assert body["target_value"] == 5000
     assert body["unit"] == "steps"
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_target", "expected_unit"),
+    [
+        (
+            {
+                "title": "Run twice",
+                "tracking_mode": "boolean",
+                "frequency": "weekly",
+                "target_value": 2,
+            },
+            2,
+            None,
+        ),
+        (
+            {
+                "title": "Run distance",
+                "tracking_mode": "numeric",
+                "frequency": "weekly",
+                "target_value": 15,
+                "unit": "km",
+            },
+            15,
+            "km",
+        ),
+    ],
+)
+async def test_create_weekly_habit_combinations(
+    client: AsyncClient,
+    payload: dict[str, object],
+    expected_target: int,
+    expected_unit: str | None,
+) -> None:
+    token = await _register_and_login(
+        client, email=f"weekly-{payload['tracking_mode']}@example.com"
+    )
+    response = await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["frequency"] == "weekly"
+    assert body["target_value"] == expected_target
+    assert body["unit"] == expected_unit
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "title": "Too few runs",
+            "tracking_mode": "boolean",
+            "frequency": "weekly",
+            "target_value": 0,
+        },
+        {
+            "title": "Too many runs",
+            "tracking_mode": "boolean",
+            "frequency": "weekly",
+            "target_value": 8,
+        },
+        {
+            "title": "Run",
+            "tracking_mode": "boolean",
+            "frequency": "weekly",
+            "target_value": 2,
+            "unit": "times",
+        },
+        {
+            "title": "Walk",
+            "tracking_mode": "numeric",
+            "frequency": "weekly",
+            "target_value": 15,
+            "unit": "   ",
+        },
+    ],
+)
+async def test_create_weekly_habit_rejects_invalid_goal_shape(
+    client: AsyncClient,
+    payload: dict[str, object],
+) -> None:
+    token = await _register_and_login(
+        client, email=f"invalid-weekly-{payload['title'].replace(' ', '-')}@example.com"
+    )
+    response = await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"
 
 
 async def test_list_habits_is_user_scoped(client: AsyncClient) -> None:
@@ -224,6 +395,38 @@ async def test_update_habit_violates_invariant_returns_400(
     )
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "validation_error"
+
+
+@pytest.mark.parametrize(
+    "immutable_patch",
+    [{"frequency": "weekly"}, {"tracking_mode": "boolean"}],
+)
+async def test_update_habit_rejects_immutable_fields(
+    client: AsyncClient,
+    immutable_patch: dict[str, str],
+) -> None:
+    field_name = next(iter(immutable_patch))
+    token = await _register_and_login(
+        client, email=f"immutable-{field_name}@example.com"
+    )
+    created = await client.post(
+        "/api/v1/habits",
+        headers=_auth_headers(token),
+        json={
+            "title": "Walk",
+            "tracking_mode": "numeric",
+            "target_value": 5000,
+            "unit": "steps",
+        },
+    )
+
+    response = await client.patch(
+        f"/api/v1/habits/{created.json()['id']}",
+        headers=_auth_headers(token),
+        json=immutable_patch,
+    )
+
+    assert response.status_code == 422
 
 
 async def test_delete_habit_returns_204_and_removes(

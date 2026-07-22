@@ -10,7 +10,7 @@ from app.modules.habits.models import FREQUENCY_DAILY
 
 # ---------- Habit ----------
 
-FrequencyDaily = Literal["daily"]
+Frequency = Literal["daily", "weekly"]
 TrackingMode = Literal["boolean", "numeric"]
 
 
@@ -21,25 +21,24 @@ class HabitBase(BaseModel):
 
 class HabitCreate(HabitBase):
     tracking_mode: TrackingMode
-    target_value: int | None = Field(default=None, ge=1, le=10**12)
+    target_value: int | None = Field(default=None, le=10**12)
     unit: str | None = Field(default=None, max_length=20)
-    frequency: FrequencyDaily = FREQUENCY_DAILY
+    frequency: Frequency = FREQUENCY_DAILY
 
-    # The cross-field invariant (numeric requires target_value + unit;
-    # boolean must not declare either) is enforced in the service layer so
-    # it raises our domain ValidationError and produces a consistent HTTP
-    # response shape. See habits.service._validate_tracking_shape.
+    # Cross-field mode/frequency invariants are enforced in the service layer
+    # so they produce the API's consistent domain validation response.
 
 
 class HabitUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
-    target_value: int | None = Field(default=None, ge=1, le=10**12)
+    target_value: int | None = Field(default=None, le=10**12)
     unit: str | None = Field(default=None, max_length=20)
 
-    # We don't allow changing `tracking_mode` after creation. Doing so would
-    # require migrating every existing log's shape; not worth the complexity
-    # for MVP. If a user really wants to switch, they delete and re-create.
+    # tracking_mode and frequency are intentionally absent and extra fields
+    # are forbidden, making both values immutable after creation.
 
 
 class HabitRead(HabitBase):
@@ -50,7 +49,7 @@ class HabitRead(HabitBase):
     tracking_mode: TrackingMode
     target_value: int | None
     unit: str | None
-    frequency: FrequencyDaily
+    frequency: Frequency
     created_at: datetime
     updated_at: datetime
 
@@ -98,6 +97,22 @@ class HabitLogRead(BaseModel):
     note: str | None
     created_at: datetime
     updated_at: datetime
+
+
+# ---------- Progress ----------
+
+class HabitProgressRead(BaseModel):
+    habit_id: uuid.UUID
+    tracking_mode: TrackingMode
+    frequency: Frequency
+    period_start: date
+    period_end: date
+    current_value: int = Field(ge=0)
+    target_value: int = Field(gt=0)
+    remaining_value: int = Field(ge=0)
+    unit: str | None
+    completed: bool
+    log_for_date: HabitLogRead | None
 
 
 # ---------- Streak ----------

@@ -1,22 +1,29 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 
+from app.core.config import get_app_timezone, get_settings
 from app.core.dependencies import CurrentUser, DbSession
 from app.modules.habits import service as habits_service
 from app.modules.habits.schemas import (
     HabitCreate,
     HabitLogIn,
     HabitLogRead,
+    HabitProgressRead,
     HabitRead,
     HabitStreak,
     HabitUpdate,
 )
 
 router = APIRouter(prefix="/habits", tags=["habits"])
+
+
+def _current_date_in_timezone(timezone_name: str, *, now: datetime | None = None) -> date:
+    current_time = now or datetime.now(timezone.utc)
+    return current_time.astimezone(get_app_timezone(timezone_name)).date()
 
 
 # ---------- Habit CRUD ----------
@@ -40,6 +47,22 @@ async def list_habits(
 ) -> list[HabitRead]:
     habits = await habits_service.list_habits(session, user_id=user.id)
     return [HabitRead.model_validate(h) for h in habits]
+
+
+@router.get("/progress", response_model=list[HabitProgressRead])
+async def get_progress(
+    session: DbSession,
+    user: CurrentUser,
+    as_of: date | None = Query(default=None),
+) -> list[HabitProgressRead]:
+    settings = get_settings()
+    today = _current_date_in_timezone(settings.app_timezone)
+    return await habits_service.get_habit_progress(
+        session,
+        user_id=user.id,
+        as_of=as_of or today,
+        today=today,
+    )
 
 
 @router.get("/{habit_id}", response_model=HabitRead)

@@ -29,6 +29,13 @@ export async function getHabitStreak(habitId) {
   return data
 }
 
+export async function getHabitProgress(asOf) {
+  const { data } = await api.get('/habits/progress', {
+    params: asOf ? { as_of: asOf } : undefined,
+  })
+  return data
+}
+
 export async function logHabit(habitId, payload) {
   const { data } = await api.post(`/habits/${habitId}/logs`, payload)
   return data

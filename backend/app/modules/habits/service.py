@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from app.core.exceptions import HabitNotFound, ValidationError
 from app.modules.habits import repository as habits_repo
 from app.modules.habits.models import (
     FREQUENCY_DAILY,
+    FREQUENCY_WEEKLY,
     TRACKING_BOOLEAN,
     TRACKING_NUMERIC,
     Habit,
@@ -15,6 +16,8 @@ from app.modules.habits.models import (
 from app.modules.habits.schemas import (
     HabitCreate,
     HabitLogIn,
+    HabitLogRead,
+    HabitProgressRead,
     HabitStreak,
     HabitUpdate,
 )
@@ -48,27 +51,36 @@ def _recompute_completed_in_place(log: HabitLog, habit: Habit) -> None:
 def _validate_tracking_shape(
     tracking_mode: str,
     *,
+    frequency: str,
     target_value: int | None,
     unit: str | None,
 ) -> None:
-    """Enforce the cross-field invariant: numeric habits must carry
-    target_value and unit; boolean habits must not. Raises our domain
-    ``ValidationError`` so HTTP responses use the standard error envelope.
+    """Enforce the mode/frequency goal shape at the service boundary.
 
-    Pydantic enforces the same on the wire via HabitCreate's model_validator,
-    but we re-validate here so direct service calls (and the merged-state
-    check inside update_habit) go through the same error type.
+    Direct service calls and HTTP requests receive the same domain error for
+    invalid cross-field combinations.
     """
-    if tracking_mode == TRACKING_NUMERIC:
-        if target_value is None or unit is None:
+    if frequency not in (FREQUENCY_DAILY, FREQUENCY_WEEKLY):
+        raise ValidationError(f"Unknown frequency: {frequency!r}.")
+
+    if tracking_mode == TRACKING_BOOLEAN:
+        if unit is not None:
+            raise ValidationError("Boolean habits must not declare unit.")
+        if frequency == FREQUENCY_DAILY and target_value is not None:
+            raise ValidationError("Daily boolean habits must not declare target_value.")
+        if frequency == FREQUENCY_WEEKLY and (
+            target_value is None or not 1 <= target_value <= 7
+        ):
             raise ValidationError(
-                "Numeric habits require both target_value and unit."
+                "Weekly boolean habits require target_value between 1 and 7."
             )
-    elif tracking_mode == TRACKING_BOOLEAN:
-        if target_value is not None or unit is not None:
+    elif tracking_mode == TRACKING_NUMERIC:
+        if target_value is None or target_value <= 0:
             raise ValidationError(
-                "Boolean habits must not declare target_value or unit."
+                "Numeric habits require a positive target_value."
             )
+        if unit is None or not unit:
+            raise ValidationError("Numeric habits require a non-empty unit.")
     else:
         raise ValidationError(f"Unknown tracking_mode: {tracking_mode!r}.")
 
@@ -76,10 +88,12 @@ def _validate_tracking_shape(
 # ---------- Habit CRUD ----------
 
 async def create_habit(session, *, user_id: uuid.UUID, payload: HabitCreate) -> Habit:
+    unit = payload.unit.strip() if payload.unit is not None else None
     _validate_tracking_shape(
         payload.tracking_mode,
+        frequency=payload.frequency,
         target_value=payload.target_value,
-        unit=payload.unit,
+        unit=unit,
     )
     return await habits_repo.create(
         session,
@@ -88,7 +102,7 @@ async def create_habit(session, *, user_id: uuid.UUID, payload: HabitCreate) -> 
         description=payload.description,
         tracking_mode=payload.tracking_mode,
         target_value=payload.target_value,
-        unit=payload.unit,
+        unit=unit,
         frequency=payload.frequency or FREQUENCY_DAILY,
     )
 
@@ -115,11 +129,14 @@ async def update_habit(
 ) -> Habit:
     habit = await get_habit(session, user_id=user_id, habit_id=habit_id)
     fields = payload.model_dump(exclude_unset=True)
+    if "unit" in fields and fields["unit"] is not None:
+        fields["unit"] = fields["unit"].strip()
 
     # Validate the merged state still satisfies the tracking-mode invariants
     # before we hand the patch to the repository.
     _validate_tracking_shape(
         habit.tracking_mode,
+        frequency=habit.frequency,
         target_value=fields.get("target_value", habit.target_value),
         unit=fields.get("unit", habit.unit),
     )
@@ -130,6 +147,81 @@ async def update_habit(
 async def delete_habit(session, *, user_id: uuid.UUID, habit_id: uuid.UUID) -> None:
     habit = await get_habit(session, user_id=user_id, habit_id=habit_id)
     await habits_repo.delete(session, habit)
+
+
+# ---------- Progress ----------
+
+async def get_habit_progress(
+    session,
+    *,
+    user_id: uuid.UUID,
+    as_of: date,
+    today: date,
+) -> list[HabitProgressRead]:
+    """Calculate user-scoped daily or ISO-weekly progress from habit logs."""
+    if as_of > today:
+        raise ValidationError("as_of cannot be in the future.")
+
+    week_start = as_of - timedelta(days=as_of.weekday())
+    week_end = week_start + timedelta(days=6)
+    habit_records = await habits_repo.list_for_user_with_logs_between(
+        session,
+        user_id=user_id,
+        start_date=week_start,
+        end_date=week_end,
+    )
+
+    progress_items: list[HabitProgressRead] = []
+    for habit, period_logs in habit_records:
+        log_for_date = next(
+            (log for log in period_logs if log.logged_on == as_of),
+            None,
+        )
+
+        if habit.frequency == FREQUENCY_WEEKLY:
+            period_start = week_start
+            period_end = week_end
+            if habit.tracking_mode == TRACKING_BOOLEAN:
+                current_value = len({log.logged_on for log in period_logs})
+            else:
+                current_value = sum(log.logged_value or 0 for log in period_logs)
+        else:
+            period_start = as_of
+            period_end = as_of
+            if habit.tracking_mode == TRACKING_BOOLEAN:
+                current_value = 1 if log_for_date is not None else 0
+            else:
+                current_value = log_for_date.logged_value if log_for_date else 0
+                current_value = current_value or 0
+
+        target_value = (
+            1
+            if habit.tracking_mode == TRACKING_BOOLEAN
+            and habit.frequency == FREQUENCY_DAILY
+            else habit.target_value
+        )
+        assert target_value is not None, "validated habits must have a target"
+        completed = current_value >= target_value
+        progress_items.append(
+            HabitProgressRead(
+                habit_id=habit.id,
+                tracking_mode=habit.tracking_mode,
+                frequency=habit.frequency,
+                period_start=period_start,
+                period_end=period_end,
+                current_value=current_value,
+                target_value=target_value,
+                remaining_value=max(target_value - current_value, 0),
+                unit=habit.unit,
+                completed=completed,
+                log_for_date=(
+                    HabitLogRead.model_validate(log_for_date)
+                    if log_for_date is not None
+                    else None
+                ),
+            )
+        )
+    return progress_items
 
 
 # ---------- Logging ----------

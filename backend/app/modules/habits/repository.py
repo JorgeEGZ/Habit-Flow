@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import delete as sql_delete, func, select
+from sqlalchemy import and_, delete as sql_delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,37 @@ async def list_for_user(session: AsyncSession, *, user_id: uuid.UUID) -> list[Ha
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def list_for_user_with_logs_between(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+) -> list[tuple[Habit, list[HabitLog]]]:
+    """Load a user's habits with only their logs in the requested period."""
+    stmt = (
+        select(Habit, HabitLog)
+        .outerjoin(
+            HabitLog,
+            and_(
+                HabitLog.habit_id == Habit.id,
+                HabitLog.logged_on >= start_date,
+                HabitLog.logged_on <= end_date,
+            ),
+        )
+        .where(Habit.user_id == user_id)
+        .order_by(Habit.created_at.asc(), Habit.id.asc(), HabitLog.logged_on.asc())
+    )
+    rows = (await session.execute(stmt)).all()
+    grouped: dict[uuid.UUID, tuple[Habit, list[HabitLog]]] = {}
+    for habit, log in rows:
+        if habit.id not in grouped:
+            grouped[habit.id] = (habit, [])
+        if log is not None:
+            grouped[habit.id][1].append(log)
+    return list(grouped.values())
 
 
 async def create(

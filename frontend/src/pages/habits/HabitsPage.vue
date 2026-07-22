@@ -17,8 +17,8 @@
 
     <SecondaryNav :items="habitNavigation" aria-label="Secciones de hábitos" />
 
-    <p v-if="formError || habitsStore.error || dashboardStore.error" class="dashboard-page__alert habits-form-card__alert">
-      {{ formError || habitsStore.error || dashboardStore.error }}
+    <p v-if="formError || habitsStore.error" class="dashboard-page__alert habits-form-card__alert">
+      {{ formError || habitsStore.error }}
     </p>
 
     <section v-if="isTodayRoute" class="habits-daily-workspace" aria-labelledby="habits-today-title">
@@ -27,16 +27,16 @@
           <p class="habits-workspace-header__eyebrow">Seguimiento diario</p>
           <h2 id="habits-today-title">Hoy</h2>
         </div>
-        <span class="habits-daily-progress">{{ todayCompletedCount }} de {{ habits.length }} completados</span>
+        <span class="habits-daily-progress">{{ todayCompletedCount }} de {{ habits.length }} metas cumplidas</span>
       </div>
 
       <section class="habits-summary" aria-label="Resumen de hoy">
         <article class="dashboard-stat">
-          <span>Completados hoy</span>
+          <span>Metas cumplidas</span>
           <strong>{{ todayCompletedCount }}</strong>
         </article>
         <article class="dashboard-stat">
-          <span>Hábitos para hoy</span>
+          <span>Hábitos activos</span>
           <strong>{{ habits.length }}</strong>
         </article>
         <article class="dashboard-stat">
@@ -65,11 +65,8 @@
           </header>
 
           <div class="habit-card__meta">
-            <span v-if="habit.tracking_mode === 'numeric'">{{ targetLabel(habit) }}</span>
-            <span v-else>Hecho / No hecho</span>
-            <template v-if="habit.tracking_mode === 'numeric'">
-              <span>{{ numericProgressLabel(habit) }}</span>
-            </template>
+            <span>{{ targetLabel(habit) }}</span>
+            <span>{{ progressValueLabel(habit) }}</span>
             <span>Racha actual: {{ habitStreak(habit.id).current }}</span>
             <span class="habit-daily-status" :class="statusToneClass(getTodayStatus(habit).tone)">
               {{ getTodayStatus(habit).label }}
@@ -80,7 +77,7 @@
             <div v-if="habit.tracking_mode === 'boolean'" class="habit-log-inline">
               <Button
                 type="button"
-                :label="isLoggedToday(habit) ? 'Completado hoy' : 'Marcar como hecho'"
+                :label="booleanLogButtonLabel(habit)"
                 icon="pi pi-check"
                 :loading="habitsStore.submitting"
                 @click="handleBooleanLog(habit)"
@@ -151,9 +148,8 @@
           </header>
 
           <div class="habit-card__meta">
-            <span v-if="habit.tracking_mode === 'numeric'">{{ targetLabel(habit) }}</span>
-            <span v-else>Hecho / No hecho</span>
-            <span>Frecuencia: {{ habit.frequency }}</span>
+            <span>{{ targetLabel(habit) }}</span>
+            <span>Periodo: {{ frequencyLabel(habit.frequency) }}</span>
           </div>
 
           <div class="habit-card__metrics">
@@ -189,14 +185,13 @@
             <p v-if="selectedHabit.description" class="habit-detail__description">{{ selectedHabit.description }}</p>
             <div class="habit-detail__summary">
               <div class="dashboard-stat"><span>Modo</span><strong>{{ trackingModeLabel(selectedHabit.tracking_mode) }}</strong></div>
-              <div class="dashboard-stat"><span>Frecuencia</span><strong>{{ selectedHabit.frequency }}</strong></div>
+              <div class="dashboard-stat"><span>Periodo</span><strong>{{ frequencyLabel(selectedHabit.frequency) }}</strong></div>
               <div class="dashboard-stat"><span>Racha actual</span><strong>{{ habitStreak(selectedHabit.id).current }}</strong></div>
               <div class="dashboard-stat"><span>Racha máxima</span><strong>{{ habitStreak(selectedHabit.id).longest }}</strong></div>
             </div>
 
             <div class="habit-detail__configuration">
-              <span v-if="selectedHabit.tracking_mode === 'numeric'">{{ targetLabel(selectedHabit) }}</span>
-              <span v-else>Este hábito se registra como completado o no completado.</span>
+              <span>{{ targetLabel(selectedHabit) }}</span>
             </div>
 
             <div class="habits-header-actions">
@@ -210,7 +205,7 @@
 
     <Dialog v-model:visible="showHabitDialog" modal dismissableMask class="app-dialog" :header="editingHabitId ? 'Editar hábito' : 'Crear hábito'">
       <p class="habits-form-card__subtitle">
-        {{ editingHabitId ? 'Actualiza los datos del hábito seleccionado.' : 'Crea un nuevo hábito diario.' }}
+        {{ editingHabitId ? 'Actualiza los datos del hábito seleccionado.' : 'Crea un hábito diario o semanal.' }}
       </p>
 
       <form class="habits-form" @submit.prevent="handleSubmit">
@@ -227,10 +222,23 @@
           <small class="habit-form-helper">{{ trackingModeHelper(form.trackingMode) }}</small>
         </div>
 
-        <div v-if="form.trackingMode === 'numeric'" class="habit-inline-grid">
-          <label class="habit-field"><span>Meta</span><input v-model.number="form.targetValue" class="habit-input" type="number" min="1" step="1" /></label>
+        <div class="habit-field">
+          <span>Periodo</span>
+          <div v-if="editingHabitId" class="habit-mode-lock"><span class="habit-badge">{{ frequencyLabel(form.frequency) }}</span><small>El periodo no se puede cambiar después de crear el hábito.</small></div>
+          <div v-else class="habit-toggle-group">
+            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.frequency === 'daily' }" @click="setFrequency('daily')">Diario</button>
+            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.frequency === 'weekly' }" @click="setFrequency('weekly')">Semanal</button>
+          </div>
+        </div>
+
+        <div v-if="isBooleanWeeklyForm" class="habit-inline-grid">
+          <label class="habit-field"><span>Veces por semana</span><input v-model.number="form.targetValue" class="habit-input" type="number" min="1" max="7" step="1" /></label>
+        </div>
+        <div v-else-if="form.trackingMode === 'numeric'" class="habit-inline-grid">
+          <label class="habit-field"><span>{{ form.frequency === 'weekly' ? 'Meta semanal' : 'Meta diaria' }}</span><input v-model.number="form.targetValue" class="habit-input" type="number" min="1" step="1" /></label>
           <label class="habit-field"><span>Unidad</span><InputText v-model="form.unit" class="habit-input" autocomplete="off" /></label>
         </div>
+        <small v-if="showsGoalFields" class="habit-form-helper">{{ goalHelper() }}</small>
 
         <p v-if="formError" class="dashboard-page__alert habits-form-card__alert">{{ formError }}</p>
         <div class="habit-form__actions">
@@ -248,19 +256,24 @@ import Dialog from 'primevue/dialog'
 import { useRoute, useRouter } from 'vue-router'
 
 import SecondaryNav from '../../components/common/SecondaryNav.vue'
-import { useDashboardStore } from '../../stores/dashboard'
 import { useHabitsStore } from '../../stores/habits'
 import { getLocalDateString } from '../../utils/format'
 
 const habitsStore = useHabitsStore()
-const dashboardStore = useDashboardStore()
 const route = useRoute()
 const router = useRouter()
 
 const formError = ref('')
 const editingHabitId = ref('')
 const showHabitDialog = ref(false)
-const form = reactive({ title: '', description: '', trackingMode: 'boolean', targetValue: null, unit: '' })
+const form = reactive({
+  title: '',
+  description: '',
+  trackingMode: 'boolean',
+  frequency: 'daily',
+  targetValue: null,
+  unit: '',
+})
 const logDrafts = reactive({})
 const today = getLocalDateString()
 
@@ -270,28 +283,23 @@ const isManageRoute = computed(() => route.name === 'habits-manage')
 const isDetailRoute = computed(() => route.name === 'habit-detail')
 const routeHabitId = computed(() => String(route.params.habitId || ''))
 const selectedHabit = computed(() => habits.value.find((habit) => habit.id === routeHabitId.value) || null)
+const isBooleanWeeklyForm = computed(() => form.trackingMode === 'boolean' && form.frequency === 'weekly')
+const showsGoalFields = computed(() => isBooleanWeeklyForm.value || form.trackingMode === 'numeric')
 const habitNavigation = computed(() => [
   { label: 'Hoy', routeName: 'habits-today', active: isTodayRoute.value },
   { label: 'Mis hábitos', routeName: 'habits-manage', active: isManageRoute.value || isDetailRoute.value },
 ])
-const todayCompletedCount = computed(() => dashboardStore.habits?.completed_today ?? Object.values(habitsStore.todayLogs).filter((log) => log?.completed).length)
+const todayCompletedCount = computed(() => Object.values(habitsStore.progressByHabitId).filter((progress) => progress.completed).length)
 const topCurrentStreak = computed(() => Math.max(0, ...habits.value.map((habit) => habitStreak(habit.id).current)))
 
 watch(
-  routeHabitId,
-  async () => {
+  [routeHabitId, isTodayRoute],
+  async ([, isToday]) => {
     if (!habits.value.length) {
       await habitsStore.fetchHabits()
     }
-  },
-  { immediate: true },
-)
-
-watch(
-  isTodayRoute,
-  async (isToday) => {
-    if (isToday && !dashboardStore.habits) {
-      await dashboardStore.fetchHabits()
+    if (isToday) {
+      await habitsStore.fetchProgress(today)
     }
   },
   { immediate: true },
@@ -301,29 +309,68 @@ function trackingModeLabel(mode) {
   return mode === 'numeric' ? 'Cantidad' : 'Hecho / No hecho'
 }
 
+function frequencyLabel(frequency) {
+  return frequency === 'weekly' ? 'Semanal' : 'Diario'
+}
+
 function trackingModeHelper(mode) {
   if (mode === 'numeric') {
-    return 'Para hábitos donde registras un número, como leer 30 minutos, caminar 8000 pasos o tomar 2 litros de agua.'
+    return 'Para hábitos donde registras un número, como minutos, pasos, litros o kilómetros.'
   }
-  return 'Para hábitos que solo necesitas marcar como completados, como meditar, tomar vitaminas o ir al gym.'
+  return 'Para hábitos que registras como completados, como correr, meditar o ir al gym.'
+}
+
+function goalHelper() {
+  if (form.trackingMode === 'boolean') {
+    return 'Ejemplo: Correr 2 veces por semana.'
+  }
+  return form.frequency === 'weekly'
+    ? 'Ejemplo: Correr 15 km por semana.'
+    : 'Ejemplo: Leer 30 minutos al día.'
+}
+
+function progressFor(habit) {
+  return habitsStore.progressByHabitId[habit.id] ?? null
+}
+
+function progressUnit(habit, progress = progressFor(habit)) {
+  if (habit.tracking_mode === 'boolean') {
+    return progress?.frequency === 'weekly' ? 'veces' : ''
+  }
+  return progress?.unit ?? habit.unit ?? ''
 }
 
 function targetLabel(habit) {
-  return `Meta: ${habit.target_value} ${habit.unit}`
-}
-
-function numericProgressLabel(habit) {
-  const loggedValue = Number(habitsStore.todayLogs[habit.id]?.logged_value ?? 0)
-  return `${loggedValue} / ${habit.target_value} ${habit.unit}`
-}
-
-function numericRemainingLabel(habit) {
-  const log = habitsStore.todayLogs[habit.id]
-  const remaining = Math.max(0, Number(habit.target_value) - Number(log?.logged_value ?? 0))
-  if (remaining === 0) {
-    return 'Completado hoy'
+  const progress = progressFor(habit)
+  if (habit.tracking_mode === 'boolean' && habit.frequency === 'daily') {
+    return 'Hecho / No hecho - Diario'
   }
-  return `Faltan ${remaining} ${habit.unit}`
+  const period = habit.frequency === 'weekly' ? 'semanal' : 'diaria'
+  return `Meta ${period}: ${progress?.target_value ?? habit.target_value} ${progressUnit(habit, progress)}`
+}
+
+function progressValueLabel(habit) {
+  const progress = progressFor(habit)
+  if (!progress) {
+    return habit.frequency === 'weekly' ? 'Progreso semanal no disponible' : 'Progreso de hoy no disponible'
+  }
+  const suffix = progress.frequency === 'weekly' ? ' esta semana' : ''
+  const unit = progressUnit(habit, progress)
+  return `${progress.current_value} / ${progress.target_value}${unit ? ` ${unit}` : ''}${suffix}`
+}
+
+function progressRemainingLabel(habit) {
+  const progress = progressFor(habit)
+  if (!progress) {
+    return 'Sin progreso disponible'
+  }
+  if (progress.completed) {
+    return progress.frequency === 'weekly' ? 'Meta semanal completada' : 'Completado hoy'
+  }
+  if (habit.tracking_mode === 'boolean' && progress.frequency === 'weekly') {
+    return `Falta ${progress.remaining_value} ${progress.remaining_value === 1 ? 'vez' : 'veces'}`
+  }
+  return `Faltan ${progress.remaining_value} ${progressUnit(habit, progress)}`
 }
 
 function statusToneClass(tone) {
@@ -339,25 +386,24 @@ function habitStreak(habitId) {
 }
 
 function getTodayStatus(habit) {
-  const log = habitsStore.todayLogs[habit.id]
-  if (!log) {
-    return { label: 'Sin registro en esta sesión', tone: 'neutral' }
+  const progress = progressFor(habit)
+  if (!progress) return { label: 'Sin progreso disponible', tone: 'neutral' }
+  if (progress.completed) return { label: progressRemainingLabel(habit), tone: 'success' }
+  if (!progress.log_for_date && progress.frequency === 'daily') {
+    return { label: 'Sin registro hoy', tone: 'neutral' }
   }
-  if (habit.tracking_mode === 'numeric') {
-    const completed = Number(log.logged_value ?? 0) >= Number(habit.target_value)
-    return {
-      label: completed ? 'Completado hoy' : numericRemainingLabel(habit),
-      tone: completed ? 'success' : 'warning',
-    }
-  }
-  if (log.completed) {
-    return { label: 'Completado hoy', tone: 'success' }
-  }
-  return { label: 'Registrado hoy', tone: 'warning' }
+  return { label: progressRemainingLabel(habit), tone: 'warning' }
 }
 
 function isLoggedToday(habit) {
-  return Boolean(habitsStore.todayLogs[habit.id])
+  return Boolean(progressFor(habit)?.log_for_date)
+}
+
+function booleanLogButtonLabel(habit) {
+  if (habit.frequency === 'daily') {
+    return isLoggedToday(habit) ? 'Completado hoy' : 'Marcar como hecho'
+  }
+  return isLoggedToday(habit) ? 'Registrado hoy' : 'Registrar hoy'
 }
 
 function getLogDraft(habitId) {
@@ -372,6 +418,7 @@ function resetForm() {
   form.title = ''
   form.description = ''
   form.trackingMode = 'boolean'
+  form.frequency = 'daily'
   form.targetValue = null
   form.unit = ''
   formError.value = ''
@@ -386,6 +433,16 @@ function openCreateHabitDialog() {
 function setTrackingMode(mode) {
   if (!editingHabitId.value) {
     form.trackingMode = mode
+    form.targetValue = null
+    form.unit = ''
+  }
+}
+
+function setFrequency(frequency) {
+  if (!editingHabitId.value) {
+    form.frequency = frequency
+    form.targetValue = null
+    form.unit = ''
   }
 }
 
@@ -394,6 +451,7 @@ function startEdit(habit) {
   form.title = habit.title
   form.description = habit.description ?? ''
   form.trackingMode = habit.tracking_mode
+  form.frequency = habit.frequency
   form.targetValue = habit.target_value ?? null
   form.unit = habit.unit ?? ''
   formError.value = ''
@@ -410,15 +468,26 @@ function buildHabitPayload() {
   if (!title) {
     throw new Error('El título es obligatorio.')
   }
+  if (form.trackingMode === 'boolean') {
+    if (form.frequency === 'daily') {
+      return { title, description: description || null, target_value: null, unit: null, frequency: 'daily' }
+    }
+    const targetValue = Number(form.targetValue)
+    if (!Number.isInteger(targetValue) || targetValue < 1 || targetValue > 7) {
+      throw new Error('Indica entre 1 y 7 veces por semana.')
+    }
+    return { title, description: description || null, target_value: targetValue, unit: null, frequency: 'weekly' }
+  }
+
   if (form.trackingMode === 'numeric') {
     const targetValue = Number(form.targetValue)
     const unit = form.unit.trim()
     if (!Number.isInteger(targetValue) || targetValue < 1 || !unit) {
-      throw new Error('Completa la meta y la unidad para un hábito numérico.')
+      throw new Error('Completa la meta y la unidad para un hábito de cantidad.')
     }
-    return { title, description: description || null, target_value: targetValue, unit, frequency: 'daily' }
+    return { title, description: description || null, target_value: targetValue, unit, frequency: form.frequency }
   }
-  return { title, description: description || null, frequency: 'daily' }
+  throw new Error('El modo de seguimiento no es válido.')
 }
 
 async function handleSubmit() {
@@ -427,8 +496,10 @@ async function handleSubmit() {
     const payload = buildHabitPayload()
     if (editingHabitId.value) {
       const updatePayload = { title: payload.title, description: payload.description }
-      if (form.trackingMode === 'numeric') {
+      if (form.trackingMode === 'numeric' || isBooleanWeeklyForm.value) {
         updatePayload.target_value = payload.target_value
+      }
+      if (form.trackingMode === 'numeric') {
         updatePayload.unit = payload.unit
       }
       await habitsStore.updateHabit(editingHabitId.value, updatePayload)
@@ -463,7 +534,6 @@ async function handleBooleanLog(habit) {
   formError.value = ''
   try {
     await habitsStore.logHabit(habit.id, { logged_on: today })
-    await refreshTodaySummary()
   } catch {
     return
   }
@@ -484,7 +554,6 @@ async function handleNumericLog(habit) {
   }
   try {
     await habitsStore.logHabit(habit.id, { logged_on: today, logged_value: loggedValue, note: note || null })
-    await refreshTodaySummary()
     draft.loggedValue = null
     draft.note = ''
   } catch {
@@ -496,15 +565,6 @@ async function handleDeleteLog(habit) {
   formError.value = ''
   try {
     await habitsStore.deleteHabitLog(habit.id, today)
-    await refreshTodaySummary()
-  } catch {
-    return
-  }
-}
-
-async function refreshTodaySummary() {
-  try {
-    await dashboardStore.fetchHabits()
   } catch {
     return
   }

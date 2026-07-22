@@ -11,7 +11,7 @@ from app.modules.dashboard import service as dashboard_service
 from app.modules.finances import service as finances_service
 from app.modules.finances.schemas import AccountCreate, CategoryCreate, TransactionCreate
 from app.modules.habits import service as habits_service
-from app.modules.habits.schemas import HabitCreate, HabitLogIn
+from app.modules.habits.schemas import HabitCreate, HabitLogIn, HabitLogNumericIn
 from app.modules.savings import service as savings_service
 from app.modules.savings.schemas import SavingContributionIn, SavingGoalCreate
 from app.modules.users.models import User
@@ -108,6 +108,74 @@ async def test_habit_dashboard_metrics(session: AsyncSession) -> None:
     assert habits.longest_streak_summary is not None
     assert habits.longest_streak_summary.habit_id == numeric_habit.id
     assert habits.longest_streak_summary.longest == 4
+
+
+async def test_habit_dashboard_separates_daily_and_weekly_metrics(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "dash-weekly-habits@example.com")
+    daily_habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(title="Daily", tracking_mode="boolean"),
+    )
+    weekly_boolean = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Weekly runs",
+            tracking_mode="boolean",
+            frequency="weekly",
+            target_value=2,
+        ),
+    )
+    weekly_numeric = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Weekly distance",
+            tracking_mode="numeric",
+            frequency="weekly",
+            target_value=15,
+            unit="km",
+        ),
+    )
+
+    await habits_service.log_habit(
+        session,
+        user_id=user.id,
+        habit_id=daily_habit.id,
+        payload=HabitLogIn(logged_on=TODAY),
+        today=TODAY,
+    )
+    for logged_on in (date(2026, 6, 15), date(2026, 6, 16)):
+        await habits_service.log_habit(
+            session,
+            user_id=user.id,
+            habit_id=weekly_boolean.id,
+            payload=HabitLogIn(logged_on=logged_on),
+            today=TODAY,
+        )
+    for logged_on, value in ((date(2026, 6, 16), 7), (TODAY, 8)):
+        await habits_service.log_habit(
+            session,
+            user_id=user.id,
+            habit_id=weekly_numeric.id,
+            payload=HabitLogNumericIn(logged_on=logged_on, logged_value=value),
+            today=TODAY,
+        )
+
+    habits = await dashboard_service.get_habits(
+        session, user_id=user.id, today=TODAY
+    )
+
+    assert habits.total_active_habits == 3
+    assert habits.daily_habits_total == 1
+    assert habits.weekly_habits_total == 2
+    assert habits.completed_today == 1
+    assert habits.weekly_goals_completed == 2
+    assert habits.current_streak_summary is not None
+    assert habits.current_streak_summary.habit_id == daily_habit.id
 
 
 async def test_savings_dashboard_metrics(session: AsyncSession) -> None:

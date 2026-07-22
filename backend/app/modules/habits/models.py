@@ -30,9 +30,10 @@ from app.db.mixins import UUIDPrimaryKeyMixin
 TRACKING_BOOLEAN = "boolean"
 TRACKING_NUMERIC = "numeric"
 
-# Frequency constants. The column is in the table because the ERD allows
-# it; the API layer rejects anything other than "daily" for now.
+# Frequency constants. Weekly goals still use one log per calendar day;
+# progress aggregation remains separate from the storage model.
 FREQUENCY_DAILY = "daily"
+FREQUENCY_WEEKLY = "weekly"
 
 
 class TimestampedMixin:
@@ -69,22 +70,22 @@ class Habit(UUIDPrimaryKeyMixin, TimestampedMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "tracking_mode IN ('boolean','numeric')",
-            name="ck_habits_tracking_mode",
+            name="tracking_mode",
         ),
         CheckConstraint(
-            "(tracking_mode = 'numeric' AND target_value IS NOT NULL "
-            "AND target_value > 0) "
-            "OR (tracking_mode = 'boolean' AND target_value IS NULL)",
-            name="ck_habits_target_value_consistent",
+            "(tracking_mode = 'boolean' AND frequency = 'daily' "
+            "AND target_value IS NULL AND unit IS NULL) OR "
+            "(tracking_mode = 'boolean' AND frequency = 'weekly' "
+            "AND target_value IS NOT NULL AND target_value BETWEEN 1 AND 7 "
+            "AND unit IS NULL) OR "
+            "(tracking_mode = 'numeric' AND frequency IN ('daily','weekly') "
+            "AND target_value IS NOT NULL AND target_value > 0 "
+            "AND unit IS NOT NULL AND length(trim(unit)) > 0)",
+            name="goal_shape",
         ),
         CheckConstraint(
-            "(tracking_mode = 'numeric' AND unit IS NOT NULL) "
-            "OR (tracking_mode = 'boolean' AND unit IS NULL)",
-            name="ck_habits_unit_consistent",
-        ),
-        CheckConstraint(
-            "frequency = 'daily'",
-            name="ck_habits_frequency",
+            "frequency IN ('daily','weekly')",
+            name="frequency",
         ),
         Index("ix_habits_user_id", "user_id"),
     )

@@ -37,8 +37,8 @@
           <strong class="dashboard-kpi__expense">{{ formatCurrencyCop(summary.finances.monthly_expenses) }}</strong>
         </article>
         <article class="dashboard-kpi">
-          <span>H&aacute;bitos completados hoy</span>
-          <strong>{{ summary.habits.completed_today }} / {{ summary.habits.total_active_habits }}</strong>
+          <span>Completados hoy</span>
+          <strong>{{ summary.habits.completed_today }} / {{ summary.habits.daily_habits_total }}</strong>
         </article>
       </section>
 
@@ -47,7 +47,7 @@
           <template #content>
             <header class="dashboard-panel__header">
               <div>
-                <p class="dashboard-panel__eyebrow">Seguimiento diario</p>
+                <p class="dashboard-panel__eyebrow">Seguimiento de hábitos</p>
                 <h2>H&aacute;bitos</h2>
               </div>
               <RouterLink :to="{ name: 'habits-today' }" class="dashboard-panel__action">
@@ -64,7 +64,7 @@
             <template v-else>
               <p class="dashboard-copy">
                 <strong>{{ summary.habits.completed_today }}</strong> de
-                <strong>{{ summary.habits.total_active_habits }}</strong> h&aacute;bitos completados hoy.
+                <strong>{{ summary.habits.daily_habits_total }}</strong> h&aacute;bitos diarios completados hoy.
               </p>
 
               <div class="dashboard-metric-group">
@@ -85,6 +85,20 @@
                   <strong v-else>Sin historial</strong>
                 </div>
               </div>
+
+              <div v-if="summary.habits.weekly_habits_total" class="dashboard-metric-group">
+                <div class="dashboard-metric">
+                  <span>H&aacute;bitos semanales</span>
+                  <strong>{{ summary.habits.weekly_habits_total }}</strong>
+                  <small>Metas activas para esta semana</small>
+                </div>
+                <div class="dashboard-metric">
+                  <span>Metas semanales completadas</span>
+                  <strong>{{ summary.habits.weekly_goals_completed }} / {{ summary.habits.weekly_habits_total }}</strong>
+                  <small>Progreso acumulado de la semana</small>
+                </div>
+              </div>
+              <p v-else class="dashboard-copy">No tienes h&aacute;bitos semanales activos.</p>
             </template>
           </template>
         </Card>
@@ -194,6 +208,9 @@ const emptySummary = {
   habits: {
     completed_today: 0,
     total_active_habits: 0,
+    daily_habits_total: 0,
+    weekly_habits_total: 0,
+    weekly_goals_completed: 0,
     current_streak_summary: null,
     longest_streak_summary: null,
   },

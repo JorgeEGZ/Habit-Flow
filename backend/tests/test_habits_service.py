@@ -109,6 +109,104 @@ async def test_create_numeric_habit_success(session: AsyncSession) -> None:
     assert habit.unit == "steps"
 
 
+async def test_create_boolean_weekly_habit(session: AsyncSession) -> None:
+    user = await _make_user(session, "weekly-boolean@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Run",
+            tracking_mode="boolean",
+            frequency="weekly",
+            target_value=2,
+        ),
+    )
+
+    assert habit.frequency == "weekly"
+    assert habit.target_value == 2
+    assert habit.unit is None
+
+
+async def test_create_numeric_weekly_habit_trims_unit(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "weekly-numeric@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Run distance",
+            tracking_mode="numeric",
+            frequency="weekly",
+            target_value=15,
+            unit=" km ",
+        ),
+    )
+
+    assert habit.frequency == "weekly"
+    assert habit.target_value == 15
+    assert habit.unit == "km"
+
+
+@pytest.mark.parametrize("target_value", [0, 8])
+async def test_create_boolean_weekly_rejects_target_outside_range(
+    session: AsyncSession,
+    target_value: int,
+) -> None:
+    user = await _make_user(
+        session, f"weekly-range-{target_value}@example.com"
+    )
+
+    with pytest.raises(ValidationError):
+        await habits_service.create_habit(
+            session,
+            user_id=user.id,
+            payload=HabitCreate(
+                title="Run",
+                tracking_mode="boolean",
+                frequency="weekly",
+                target_value=target_value,
+            ),
+        )
+
+
+async def test_create_boolean_weekly_rejects_unit(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "weekly-unit@example.com")
+
+    with pytest.raises(ValidationError):
+        await habits_service.create_habit(
+            session,
+            user_id=user.id,
+            payload=HabitCreate(
+                title="Run",
+                tracking_mode="boolean",
+                frequency="weekly",
+                target_value=2,
+                unit="times",
+            ),
+        )
+
+
+async def test_create_numeric_habit_rejects_blank_unit(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "blank-unit@example.com")
+
+    with pytest.raises(ValidationError):
+        await habits_service.create_habit(
+            session,
+            user_id=user.id,
+            payload=HabitCreate(
+                title="Walk",
+                tracking_mode="numeric",
+                target_value=5000,
+                unit="   ",
+            ),
+        )
+
+
 async def test_list_habits_scoped_to_user(session: AsyncSession) -> None:
     alice = await _make_user(session, "e1@example.com")
     bob = await _make_user(session, "e2@example.com")
@@ -172,6 +270,227 @@ async def test_delete_habit_cascades_to_logs(session: AsyncSession) -> None:
     await habits_service.delete_habit(session, user_id=user.id, habit_id=habit.id)
     with pytest.raises(HabitNotFound):
         await habits_service.get_habit(session, user_id=user.id, habit_id=habit.id)
+
+
+# ---------- Progress ----------
+
+async def _progress_for_habit(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    habit_id: uuid.UUID,
+    as_of: date,
+    today: date,
+):
+    progress = await habits_service.get_habit_progress(
+        session,
+        user_id=user_id,
+        as_of=as_of,
+        today=today,
+    )
+    return next(item for item in progress if item.habit_id == habit_id)
+
+
+async def test_boolean_daily_progress_with_and_without_log(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "progress-boolean-daily@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(title="Meditate", tracking_mode="boolean"),
+    )
+    as_of = date(2026, 7, 15)
+
+    before_log = await _progress_for_habit(
+        session, user_id=user.id, habit_id=habit.id, as_of=as_of, today=as_of
+    )
+    assert (before_log.current_value, before_log.target_value) == (0, 1)
+    assert before_log.remaining_value == 1
+    assert before_log.completed is False
+    assert before_log.log_for_date is None
+
+    log = await habits_service.log_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        payload=HabitLogIn(logged_on=as_of),
+        today=as_of,
+    )
+    after_log = await _progress_for_habit(
+        session, user_id=user.id, habit_id=habit.id, as_of=as_of, today=as_of
+    )
+    assert (after_log.current_value, after_log.target_value) == (1, 1)
+    assert after_log.remaining_value == 0
+    assert after_log.completed is True
+    assert after_log.log_for_date is not None
+    assert after_log.log_for_date.id == log.id
+
+
+async def test_numeric_daily_progress_with_and_without_log(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "progress-numeric-daily@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Read", tracking_mode="numeric", target_value=30, unit="minutes"
+        ),
+    )
+    as_of = date(2026, 7, 15)
+
+    no_log = await _progress_for_habit(
+        session, user_id=user.id, habit_id=habit.id, as_of=as_of, today=as_of
+    )
+    assert (no_log.current_value, no_log.remaining_value, no_log.completed) == (0, 30, False)
+
+    await habits_service.log_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        payload=HabitLogNumericIn(logged_on=as_of, logged_value=20),
+        today=as_of,
+    )
+    logged = await _progress_for_habit(
+        session, user_id=user.id, habit_id=habit.id, as_of=as_of, today=as_of
+    )
+    assert (logged.current_value, logged.target_value, logged.remaining_value) == (20, 30, 10)
+    assert logged.completed is False
+    assert logged.log_for_date is not None
+
+
+async def test_boolean_weekly_progress_counts_dates_and_same_day_upsert_once(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "progress-boolean-weekly@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Run", tracking_mode="boolean", frequency="weekly", target_value=2
+        ),
+    )
+    monday = date(2026, 7, 13)
+    for logged_on in (monday, monday + timedelta(days=1), monday + timedelta(days=1)):
+        await habits_service.log_habit(
+            session,
+            user_id=user.id,
+            habit_id=habit.id,
+            payload=HabitLogIn(logged_on=logged_on),
+            today=monday + timedelta(days=2),
+        )
+
+    progress = await _progress_for_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        as_of=monday + timedelta(days=2),
+        today=monday + timedelta(days=2),
+    )
+    assert progress.period_start == monday
+    assert progress.period_end == monday + timedelta(days=6)
+    assert progress.current_value == 2
+    assert progress.remaining_value == 0
+    assert progress.completed is True
+
+
+async def test_numeric_weekly_progress_updates_same_day_sum(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "progress-numeric-weekly@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Run", tracking_mode="numeric", frequency="weekly", target_value=15, unit="km"
+        ),
+    )
+    monday = date(2026, 7, 13)
+    for logged_on, value in ((monday, 4), (monday + timedelta(days=1), 6)):
+        await habits_service.log_habit(
+            session,
+            user_id=user.id,
+            habit_id=habit.id,
+            payload=HabitLogNumericIn(logged_on=logged_on, logged_value=value),
+            today=monday + timedelta(days=1),
+        )
+    initial = await _progress_for_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        as_of=monday + timedelta(days=1),
+        today=monday + timedelta(days=1),
+    )
+    assert (initial.current_value, initial.remaining_value, initial.completed) == (10, 5, False)
+
+    await habits_service.log_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        payload=HabitLogNumericIn(logged_on=monday + timedelta(days=1), logged_value=12),
+        today=monday + timedelta(days=1),
+    )
+    updated = await _progress_for_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        as_of=monday + timedelta(days=1),
+        today=monday + timedelta(days=1),
+    )
+    assert (updated.current_value, updated.remaining_value, updated.completed) == (16, 0, True)
+
+
+async def test_weekly_progress_uses_monday_sunday_iso_boundaries(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "progress-boundaries@example.com")
+    habit = await habits_service.create_habit(
+        session,
+        user_id=user.id,
+        payload=HabitCreate(
+            title="Gym", tracking_mode="boolean", frequency="weekly", target_value=3
+        ),
+    )
+    monday = date(2026, 7, 13)
+    for logged_on in (
+        monday - timedelta(days=1),
+        monday,
+        monday + timedelta(days=6),
+        monday + timedelta(days=7),
+    ):
+        await habits_service.log_habit(
+            session,
+            user_id=user.id,
+            habit_id=habit.id,
+            payload=HabitLogIn(logged_on=logged_on),
+            today=monday + timedelta(days=7),
+        )
+
+    progress = await _progress_for_habit(
+        session,
+        user_id=user.id,
+        habit_id=habit.id,
+        as_of=monday + timedelta(days=6),
+        today=monday + timedelta(days=7),
+    )
+    assert progress.period_start == monday
+    assert progress.period_end == monday + timedelta(days=6)
+    assert progress.current_value == 2
+    assert progress.completed is False
+
+
+async def test_progress_rejects_future_as_of(session: AsyncSession) -> None:
+    user = await _make_user(session, "progress-future@example.com")
+    today = date(2026, 7, 15)
+
+    with pytest.raises(ValidationError):
+        await habits_service.get_habit_progress(
+            session,
+            user_id=user.id,
+            as_of=today + timedelta(days=1),
+            today=today,
+        )
 
 
 # ---------- Logging ----------

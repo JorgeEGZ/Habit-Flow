@@ -50,6 +50,9 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
         "habits": {
             "completed_today": 0,
             "total_active_habits": 0,
+            "daily_habits_total": 0,
+            "weekly_habits_total": 0,
+            "weekly_goals_completed": 0,
             "current_streak_summary": None,
             "longest_streak_summary": None,
         },

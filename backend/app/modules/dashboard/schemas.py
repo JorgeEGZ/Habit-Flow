@@ -22,6 +22,9 @@ class DashboardStreakSummary(BaseModel):
 class DashboardHabits(BaseModel):
     completed_today: int = Field(ge=0)
     total_active_habits: int = Field(ge=0)
+    daily_habits_total: int = Field(ge=0)
+    weekly_habits_total: int = Field(ge=0)
+    weekly_goals_completed: int = Field(ge=0)
     current_streak_summary: DashboardStreakSummary | None = None
     longest_streak_summary: DashboardStreakSummary | None = None
 

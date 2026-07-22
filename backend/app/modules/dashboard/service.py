@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime, timezone
 
+from app.core.config import get_app_timezone, get_settings
 from app.modules.dashboard import repository as dashboard_repo
 from app.modules.dashboard.schemas import (
     DashboardAccountBalance,
@@ -16,10 +17,18 @@ from app.modules.dashboard.schemas import (
     DashboardStreakSummary,
     DashboardSummary,
 )
-from app.modules.habits.models import TRACKING_BOOLEAN
+from app.modules.habits import service as habits_service
+from app.modules.habits.models import FREQUENCY_DAILY, FREQUENCY_WEEKLY, TRACKING_BOOLEAN
 from app.modules.savings.models import STATUS_ACTIVE, STATUS_COMPLETED
 
 RECENT_TRANSACTIONS_LIMIT = 5
+
+
+def current_app_date() -> date:
+    settings = get_settings()
+    return datetime.now(timezone.utc).astimezone(
+        get_app_timezone(settings.app_timezone)
+    ).date()
 
 
 def _month_bounds(today: date) -> tuple[date, date]:
@@ -88,17 +97,30 @@ async def get_habits(
     user_id: uuid.UUID,
     today: date | None = None,
 ) -> DashboardHabits:
-    today = today or date.today()
+    today = today or current_app_date()
     rows = await dashboard_repo.fetch_habit_rows(session, user_id=user_id)
+    progress = await habits_service.get_habit_progress(
+        session,
+        user_id=user_id,
+        as_of=today,
+        today=today,
+    )
 
     completed_today = 0
     habit_days: dict[uuid.UUID, list[date]] = {}
     habits_by_id = {}
+    daily_habits_total = 0
+    weekly_habits_total = 0
 
     for habit, log in rows:
-        habits_by_id[habit.id] = habit
-        habit_days.setdefault(habit.id, [])
-        if log is None:
+        if habit.id not in habits_by_id:
+            habits_by_id[habit.id] = habit
+            habit_days[habit.id] = []
+            if habit.frequency == FREQUENCY_DAILY:
+                daily_habits_total += 1
+            elif habit.frequency == FREQUENCY_WEEKLY:
+                weekly_habits_total += 1
+        if habit.frequency != FREQUENCY_DAILY or log is None:
             continue
         if _habit_completed(habit.tracking_mode, habit.target_value, log.logged_value):
             habit_days[habit.id].append(log.logged_on)
@@ -107,6 +129,8 @@ async def get_habits(
 
     summaries = []
     for habit_id, habit in habits_by_id.items():
+        if habit.frequency != FREQUENCY_DAILY:
+            continue
         current, longest = _streak_from_days(habit_days.get(habit_id, []), today)
         summaries.append(
             DashboardStreakSummary(
@@ -123,6 +147,13 @@ async def get_habits(
     return DashboardHabits(
         completed_today=completed_today,
         total_active_habits=len(habits_by_id),
+        daily_habits_total=daily_habits_total,
+        weekly_habits_total=weekly_habits_total,
+        weekly_goals_completed=sum(
+            1
+            for item in progress
+            if item.frequency == FREQUENCY_WEEKLY and item.completed
+        ),
         current_streak_summary=current_summary,
         longest_streak_summary=longest_summary,
     )
@@ -196,7 +227,7 @@ async def get_finances(
     user_id: uuid.UUID,
     today: date | None = None,
 ) -> DashboardFinances:
-    today = today or date.today()
+    today = today or current_app_date()
     month_start, next_month_start = _month_bounds(today)
 
     monthly_income, monthly_expenses = await dashboard_repo.fetch_finance_monthly_summary(
@@ -251,6 +282,7 @@ async def get_summary(
     user_id: uuid.UUID,
     today: date | None = None,
 ) -> DashboardSummary:
+    today = today or current_app_date()
     habits = await get_habits(session, user_id=user_id, today=today)
     savings = await get_savings(session, user_id=user_id)
     finances = await get_finances(session, user_id=user_id, today=today)

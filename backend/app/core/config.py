@@ -1,5 +1,7 @@
 from functools import lru_cache
 from typing import Literal
+from datetime import timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,6 +25,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     environment: str = Field(default="development")
     debug: bool = Field(default=False)
+    app_timezone: str = Field(default="America/Bogota", min_length=1)
 
     database_url: str = Field(
         default="postgresql+asyncpg://habitflow:habitflow@localhost:5432/habitflow",
@@ -67,6 +70,19 @@ class Settings(BaseSettings):
         if not value or not value.strip():
             raise ValueError("SECRET_KEY must not be empty.")
         return value
+
+    @field_validator("app_timezone")
+    @classmethod
+    def _normalize_app_timezone(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("APP_TIMEZONE must not be empty.")
+        if normalized != "America/Bogota":
+            try:
+                ZoneInfo(normalized)
+            except ZoneInfoNotFoundError as exc:
+                raise ValueError("APP_TIMEZONE must be a valid IANA timezone.") from exc
+        return normalized
 
     @field_validator(
         "refresh_cookie_name",
@@ -114,3 +130,18 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def get_app_timezone(timezone_name: str) -> tzinfo:
+    """Return the configured timezone without requiring an extra package.
+
+    Minimal Windows Python installations may not ship the IANA database. Bogotá
+    has a stable UTC-5 offset, so the application default remains usable there;
+    every other configured IANA timezone requires the host timezone database.
+    """
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        if timezone_name == "America/Bogota":
+            return timezone(-timedelta(hours=5), name=timezone_name)
+        raise

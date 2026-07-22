@@ -8,6 +8,7 @@ export const useHabitsStore = defineStore('habits', {
     items: [],
     streaks: {},
     todayLogs: {},
+    progressByHabitId: {},
     loading: false,
     submitting: false,
     error: '',
@@ -33,6 +34,25 @@ export const useHabitsStore = defineStore('habits', {
         throw error
       } finally {
         this.loading = false
+      }
+    },
+
+    async fetchProgress(asOf) {
+      this.error = ''
+      try {
+        const progress = await habitsService.getHabitProgress(asOf)
+        this.progressByHabitId = Object.fromEntries(
+          progress.map((item) => [item.habit_id, item]),
+        )
+        this.todayLogs = Object.fromEntries(
+          progress
+            .filter((item) => item.log_for_date)
+            .map((item) => [item.habit_id, item.log_for_date]),
+        )
+        return progress
+      } catch (error) {
+        this.error = getApiErrorMessage(error, 'No fue posible cargar el progreso de los hábitos.')
+        throw error
       }
     },
 
@@ -74,6 +94,9 @@ export const useHabitsStore = defineStore('habits', {
         const nextTodayLogs = { ...this.todayLogs }
         delete nextTodayLogs[habitId]
         this.todayLogs = nextTodayLogs
+        const nextProgress = { ...this.progressByHabitId }
+        delete nextProgress[habitId]
+        this.progressByHabitId = nextProgress
         await this.fetchHabits()
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No fue posible eliminar el hábito.')
@@ -88,11 +111,8 @@ export const useHabitsStore = defineStore('habits', {
       this.error = ''
       try {
         const log = await habitsService.logHabit(habitId, payload)
-        this.todayLogs = {
-          ...this.todayLogs,
-          [habitId]: log,
-        }
         await this.fetchHabits()
+        await this.fetchProgress(payload.logged_on)
         return log
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No fue posible registrar el progreso.')
@@ -107,10 +127,8 @@ export const useHabitsStore = defineStore('habits', {
       this.error = ''
       try {
         await habitsService.deleteHabitLog(habitId, loggedOn)
-        const nextTodayLogs = { ...this.todayLogs }
-        delete nextTodayLogs[habitId]
-        this.todayLogs = nextTodayLogs
         await this.fetchHabits()
+        await this.fetchProgress(loggedOn)
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No fue posible eliminar el registro.')
         throw error
