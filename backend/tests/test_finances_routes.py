@@ -82,6 +82,22 @@ async def test_upcoming_recurring_defaults_to_thirty_days_and_app_date(
     }
 
 
+@pytest.mark.parametrize("days", [7, 30])
+async def test_upcoming_recurring_accepts_allowed_days(
+    client: AsyncClient,
+    days: int,
+) -> None:
+    token = await _register_and_login(client, email=f"allowed-upcoming-{days}@example.com")
+    response = await client.get(
+        "/api/v1/finances/insights/upcoming-recurring",
+        headers=_auth_headers(token),
+        params={"days": days},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["window_days"] == days
+
+
 @pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
 async def test_spending_by_category_rejects_invalid_month(
     client: AsyncClient,

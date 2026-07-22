@@ -84,18 +84,16 @@ export const useFinancesStore = defineStore('finances', {
     },
 
     async fetchUpcomingRecurring(days = 30) {
+      const windowDays = Number(days) === 7 ? 7 : 30
       this.loadingUpcomingRecurring = true
       this.upcomingRecurringError = ''
       this.upcomingRecurring = null
 
       try {
-        this.upcomingRecurring = await financesService.getUpcomingRecurring(days)
+        this.upcomingRecurring = await financesService.getUpcomingRecurring(windowDays)
         return this.upcomingRecurring
       } catch (error) {
-        this.upcomingRecurringError = getApiErrorMessage(
-          error,
-          'No fue posible cargar los próximos movimientos.',
-        )
+        this.upcomingRecurringError = 'No fue posible cargar los próximos movimientos.'
         throw error
       } finally {
         this.loadingUpcomingRecurring = false

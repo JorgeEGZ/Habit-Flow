@@ -284,8 +284,8 @@
                 <div><strong>{{ account.name }}</strong><span>{{ accountTypeLabel(account.type) }} · Saldo inicial {{ formatCurrencyCop(account.initial_balance) }}</span></div>
                 <strong class="finance-compact-row__amount">{{ formatCurrencyCop(account.current_balance) }}</strong>
                 <div class="finance-compact-row__actions">
-                  <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar cuenta" @click="startAccountEdit(account)" />
-                  <Button type="button" icon="pi pi-trash" severity="danger" variant="text" class="app-button app-button--icon app-button--danger" aria-label="Eliminar cuenta" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
+              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar cuenta" @click="startAccountEdit(account)" />
+              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar cuenta" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
                 </div>
               </article>
             </div>
@@ -304,8 +304,8 @@
                   <article v-for="category in group.items" :key="category.id" class="finance-compact-row">
                     <div><strong>{{ category.name }}</strong><span>{{ categoryTypeLabel(category.type) }}</span></div>
                     <div class="finance-compact-row__actions">
-                      <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar categoría" @click="startCategoryEdit(category)" />
-                      <Button type="button" icon="pi pi-trash" severity="danger" variant="text" class="app-button app-button--icon app-button--danger" aria-label="Eliminar categoría" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
+                      <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar categoría" @click="startCategoryEdit(category)" />
+                      <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar categoría" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
                     </div>
                   </article>
                 </div>

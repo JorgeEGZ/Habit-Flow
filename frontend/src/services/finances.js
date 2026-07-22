@@ -51,8 +51,10 @@ export async function getSpendingByCategory(month) {
 }
 
 export async function getUpcomingRecurring(days = 30) {
+  const normalizedDays = Number(days)
+  const windowDays = normalizedDays === 7 || normalizedDays === 30 ? normalizedDays : 30
   const { data } = await api.get('/finances/insights/upcoming-recurring', {
-    params: { days },
+    params: { days: String(windowDays) },
   })
   return data
 }

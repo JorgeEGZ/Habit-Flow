@@ -2312,6 +2312,10 @@ svg {
   color: #0f172a;
 }
 
+.p-button.app-button--icon-secondary .p-button-icon {
+  color: #111827;
+}
+
 .p-button.app-button--danger {
   border-color: #f29a9a;
   background: #f29a9a;
@@ -2324,6 +2328,10 @@ svg {
   color: #260b0b;
 }
 
+.p-button.app-button--danger .p-button-icon {
+  color: #321010;
+}
+
 .p-button.app-button--primary:focus-visible,
 .p-button.app-button--secondary:focus-visible,
 .p-button.app-button--icon:focus-visible {
@@ -2332,7 +2340,14 @@ svg {
 }
 
 .p-button.app-button--icon:disabled {
-  opacity: 0.5;
+  border-color: var(--app-border);
+  background: var(--app-surface-3);
+  color: var(--app-text-muted);
+  opacity: 0.62;
+}
+
+.p-button.app-button--icon:disabled .p-button-icon {
+  color: currentColor;
 }
 
 .p-button.p-button-icon-only {
@@ -3145,7 +3160,7 @@ svg {
 
 .finance-data-table--recurring .finance-data-table__head,
 .finance-data-table--recurring .finance-data-row {
-  grid-template-columns: minmax(9rem, 1.35fr) minmax(6rem, 0.9fr) minmax(6rem, 0.9fr) 6.5rem 6.5rem 7.5rem 13.25rem;
+  grid-template-columns: minmax(9rem, 1.35fr) minmax(6rem, 0.9fr) minmax(6rem, 0.9fr) 6.5rem 6.5rem 8rem 15rem;
 }
 
 .finance-data-table__head {
@@ -3158,7 +3173,8 @@ svg {
 }
 
 .finance-data-table--transactions .finance-data-table__head > :nth-child(5),
-.finance-data-table--recurring .finance-data-table__head > :nth-child(6) {
+.finance-data-table--recurring .finance-data-table__head > :nth-child(6),
+.finance-data-table--recurring .finance-data-table__head > :nth-child(7) {
   text-align: right;
 }
 
@@ -3178,7 +3194,7 @@ svg {
   min-width: 0;
 }
 
-.finance-data-cell > span {
+.finance-data-cell > span:not(.recurring-status-pill) {
   display: none;
   color: var(--app-text-muted);
   font-size: 0.76rem;
@@ -3221,14 +3237,24 @@ svg {
 
 .finance-data-row__actions {
   flex-wrap: nowrap;
+  justify-self: end;
+  min-width: 0;
 }
 
 .finance-recurring-toggle {
-  flex: 0 0 auto;
-  min-width: 6.7rem;
+  display: inline-flex;
+  flex: 0 0 7rem;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 7rem;
+  padding-inline: 0.65rem;
 }
 
 .finance-data-table--recurring .recurring-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
   min-height: 1.9rem;
   padding-inline: 0.6rem;
   font-size: 0.78rem;
@@ -3239,6 +3265,10 @@ svg {
 .finance-compact-row__actions .p-button {
   min-width: 2.35rem;
   min-height: 2.35rem;
+}
+
+.finance-data-row__actions .finance-recurring-toggle {
+  min-width: 7rem;
 }
 
 .finance-data-row__actions .p-button .p-button-label:empty {
@@ -3308,6 +3338,7 @@ svg {
 
 .finance-compact-row__amount {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .finance-category-group {
@@ -3332,7 +3363,7 @@ svg {
     align-items: start;
   }
 
-  .finance-data-cell > span {
+  .finance-data-cell > span:not(.recurring-status-pill) {
     display: block;
     margin-bottom: 0.2rem;
   }
@@ -3343,6 +3374,7 @@ svg {
 
   .finance-data-row__actions {
     justify-content: flex-start;
+    justify-self: start;
     flex-wrap: wrap;
   }
 }
@@ -3363,7 +3395,7 @@ svg {
     align-items: start;
   }
 
-  .finance-data-cell > span {
+  .finance-data-cell > span:not(.recurring-status-pill) {
     display: block;
     margin-bottom: 0.2rem;
   }
@@ -3374,6 +3406,7 @@ svg {
 
   .finance-data-row__actions {
     justify-content: flex-start;
+    justify-self: start;
   }
 }
 

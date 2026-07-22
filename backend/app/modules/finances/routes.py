@@ -159,12 +159,12 @@ async def get_spending_by_category(
 async def get_upcoming_recurring(
     session: DbSession,
     user: CurrentUser,
-    days: Literal[7, 30] = Query(default=30),
+    days: Literal["7", "30"] = Query(default="30"),
 ) -> UpcomingRecurringRead:
     return await finances_service.get_upcoming_recurring(
         session,
         user_id=user.id,
-        days=days,
+        days=int(days),
     )
 
 
