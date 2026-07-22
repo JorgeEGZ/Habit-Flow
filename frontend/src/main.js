@@ -37,8 +37,16 @@ async function bootstrap() {
     authStore.clearAuth()
     await router.replace({ name: 'login' })
   })
-  await authStore.initialize()
+
   app.mount('#app')
+
+  // Mount first so public routes never wait on a cross-origin refresh request.
+  await authStore.initialize()
+
+  const currentRoute = router.currentRoute.value
+  if (currentRoute.meta.guestOnly && authStore.isAuthenticated) {
+    await router.replace({ name: 'dashboard' })
+  }
 }
 
 bootstrap()

@@ -159,23 +159,28 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()
-  await authStore.initialize()
 
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
   const guestOnly = to.matched.some((record) => record.meta.guestOnly)
 
-  if (requiresAuth && !authStore.isAuthenticated) {
-    return {
-      name: 'login',
-      query: {
-        redirect: to.fullPath,
-      },
+  // Public routes must render even while a silent cookie refresh is pending.
+  if (guestOnly) {
+    if (authStore.isReady && authStore.isAuthenticated) {
+      return { name: 'dashboard' }
     }
+    return true
   }
 
-  if (guestOnly && authStore.isAuthenticated) {
-    return {
-      name: 'dashboard',
+  if (requiresAuth) {
+    await authStore.initialize()
+
+    if (!authStore.isAuthenticated) {
+      return {
+        name: 'login',
+        query: {
+          redirect: to.fullPath,
+        },
+      }
     }
   }
 

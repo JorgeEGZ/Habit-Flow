@@ -5,6 +5,8 @@ import { configureAuthRefresh, requestAccessTokenRefresh } from '../services/api
 import { clearSession, setAccessToken } from '../utils/session'
 import { getApiErrorMessage } from '../utils/errors'
 
+let initializationPromise = null
+
 function normalizeAccessTokenResponse(tokens) {
   if (!tokens?.access_token || !tokens?.token_type || !tokens?.expires_in) {
     throw new Error('Respuesta de autenticación inválida.')
@@ -54,19 +56,32 @@ export const useAuthStore = defineStore('auth', {
       if (this.isReady) {
         return
       }
+      if (initializationPromise) {
+        return initializationPromise
+      }
 
-      this.configureRefreshHandler()
-      // Access tokens and user data are no longer persisted. This also clears
-      // the legacy localStorage session before trying the HttpOnly cookie.
-      clearSession()
+      initializationPromise = (async () => {
+        this.configureRefreshHandler()
+        // Access tokens and user data are no longer persisted. This also clears
+        // the legacy localStorage session before trying the HttpOnly cookie.
+        clearSession()
+
+        try {
+          await requestAccessTokenRefresh()
+          this.user = normalizeUser(await authService.me())
+        } catch {
+          // Missing cookies, 401/403 responses, CORS failures, and network
+          // errors all degrade safely to an anonymous session.
+          this.clearAuth()
+        } finally {
+          this.isReady = true
+        }
+      })()
 
       try {
-        await requestAccessTokenRefresh()
-        this.user = normalizeUser(await authService.me())
-      } catch {
-        this.clearAuth()
+        await initializationPromise
       } finally {
-        this.isReady = true
+        initializationPromise = null
       }
     },
     async login(payload) {
