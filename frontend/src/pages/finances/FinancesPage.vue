@@ -920,8 +920,12 @@ function recurringStatusClass(isActive) {
 
 function recurringDateRange(rule) {
   const start = formatDateShort(rule.start_date)
-  const end = rule.end_date ? formatDateShort(rule.end_date) : 'Sin fin'
-  return `${start} - ${end}`
+
+  if (!rule.end_date) {
+    return `Desde ${start}`
+  }
+
+  return `${start} - ${formatDateShort(rule.end_date)}`
 }
 
 function accountLabel(accountId) {
