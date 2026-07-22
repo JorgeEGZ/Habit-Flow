@@ -174,10 +174,66 @@
         </div>
       </section>
 
-      <section
-        v-else-if="isRecurringWorkspace"
-        class="finance-tab-panel"
-      >
+      <template v-else-if="isRecurringWorkspace">
+        <section class="finance-upcoming-insight" aria-labelledby="upcoming-recurring-title">
+          <header class="finance-upcoming-insight__header">
+            <div>
+              <p class="finance-upcoming-insight__eyebrow">Proyección</p>
+              <h2 id="upcoming-recurring-title">Próximos movimientos</h2>
+              <p>Estas son proyecciones basadas en tus reglas. No se crearán movimientos automáticamente.</p>
+            </div>
+            <div class="finance-upcoming-insight__controls" role="group" aria-label="Periodo de proyección">
+              <Button
+                v-for="days in upcomingWindowOptions"
+                :key="days"
+                type="button"
+                :label="`${days} días`"
+                severity="secondary"
+                :variant="upcomingWindowDays === days ? undefined : 'outlined'"
+                class="app-button app-button--compact"
+                :class="{ 'finance-upcoming-insight__control--active': upcomingWindowDays === days }"
+                @click="upcomingWindowDays = days"
+              />
+            </div>
+          </header>
+
+          <div v-if="financesStore.loadingUpcomingRecurring" class="finance-upcoming-skeleton" aria-label="Cargando próximos movimientos">
+            <span v-for="index in 4" :key="index" class="finance-upcoming-skeleton__row"></span>
+          </div>
+          <p v-else-if="financesStore.upcomingRecurringError" class="finance-upcoming-insight__error" role="alert">
+            {{ financesStore.upcomingRecurringError }}
+          </p>
+          <div v-else-if="!upcomingRecurring?.date_groups.length" class="dashboard-empty">
+            No hay reglas activas con ocurrencias en los próximos {{ upcomingWindowDays }} días.
+          </div>
+          <template v-else>
+            <div class="finance-upcoming-summary" aria-label="Resumen de proyecciones">
+              <div><span>Ingresos esperados</span><strong class="transaction-amount--income">{{ formatCurrencyCop(upcomingRecurring.total_income) }}</strong></div>
+              <div><span>Gastos previstos</span><strong class="transaction-amount--expense">{{ formatCurrencyCop(upcomingRecurring.total_expenses) }}</strong></div>
+              <div><span>Balance previsto</span><strong :class="transactionAmountClass(upcomingRecurring.net >= 0 ? 'income' : 'expense')">{{ formatCurrencyCop(upcomingRecurring.net) }}</strong></div>
+            </div>
+            <div class="finance-upcoming-groups">
+              <section v-for="group in upcomingRecurring.date_groups" :key="group.date" class="finance-upcoming-group">
+                <header class="finance-upcoming-group__header">
+                  <strong>{{ formatDateShort(group.date) }}</strong>
+                  <span :class="transactionAmountClass(group.net >= 0 ? 'income' : 'expense')">{{ formatCurrencyCop(group.net) }}</span>
+                </header>
+                <article v-for="occurrence in group.occurrences" :key="`${occurrence.recurring_id}-${occurrence.occurrence_date}`" class="finance-upcoming-occurrence">
+                  <div class="finance-upcoming-occurrence__main">
+                    <strong>{{ occurrence.description || occurrence.category_name }}</strong>
+                    <span>{{ occurrence.account_name }} · {{ occurrence.category_name }}</span>
+                  </div>
+                  <div class="finance-upcoming-occurrence__amount">
+                    <span class="finance-upcoming-occurrence__type" :class="transactionAmountClass(occurrence.type)">{{ transactionTypeLabel(occurrence.type) }}</span>
+                    <strong :class="transactionAmountClass(occurrence.type)">{{ formatTransactionAmount(occurrence) }}</strong>
+                  </div>
+                </article>
+              </section>
+            </div>
+          </template>
+        </section>
+
+        <section class="finance-tab-panel">
         <header class="finance-panel-header">
           <div>
             <h2>Reglas recurrentes</h2>
@@ -208,7 +264,8 @@
             </div>
           </article>
         </div>
-      </section>
+        </section>
+      </template>
 
       <section
         v-else
@@ -598,6 +655,8 @@ const transactionFormError = ref('')
 const recurringFormError = ref('')
 const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
+const upcomingWindowDays = ref(30)
+const appliedUpcomingWindowDays = ref(0)
 
 const accountForm = reactive({
   name: '',
@@ -666,6 +725,8 @@ const frequencyOptions = [
   { value: 'monthly', label: 'Mensual' },
 ]
 
+const upcomingWindowOptions = [7, 30]
+
 const sortOptions = [
   { value: 'desc', label: 'Más recientes primero' },
   { value: 'asc', label: 'Más antiguos primero' },
@@ -687,6 +748,7 @@ const categories = computed(() => financesStore.categories)
 const transactions = computed(() => financesStore.transactions)
 const recurringRules = computed(() => financesStore.recurring)
 const spendingByCategory = computed(() => financesStore.spendingByCategory)
+const upcomingRecurring = computed(() => financesStore.upcomingRecurring)
 const recurringLoading = computed(() => loadingFinanceData.value || financesStore.loadingRecurring)
 const transactionsLoading = computed(() => loadingFinanceData.value || financesStore.loadingTransactions)
 
@@ -810,6 +872,21 @@ watch(spendingMonth, (month) => {
     void loadSpendingByCategory(month)
   }
 })
+
+watch(upcomingWindowDays, (days) => {
+  if (isRecurringWorkspace.value && days !== appliedUpcomingWindowDays.value) {
+    void loadUpcomingRecurring(days)
+  }
+})
+
+watch(
+  () => route.name,
+  (routeName) => {
+    if (routeName === 'finances-recurring') {
+      void loadUpcomingRecurring()
+    }
+  },
+)
 
 function accountTypeLabel(type) {
   return accountTypes.find((entry) => entry.value === type)?.label ?? type
@@ -1135,9 +1212,25 @@ async function loadFinanceData() {
       financesStore.fetchRecurring(),
       dashboardStore.fetchFinances(),
       loadSpendingByCategory(),
+      isRecurringWorkspace.value ? loadUpcomingRecurring() : Promise.resolve(),
     ])
   } finally {
     loadingFinanceData.value = false
+  }
+}
+
+async function loadUpcomingRecurring(days = upcomingWindowDays.value) {
+  if (!isRecurringWorkspace.value) {
+    return null
+  }
+
+  try {
+    const summary = await financesStore.fetchUpcomingRecurring(days)
+    appliedUpcomingWindowDays.value = summary.window_days
+    upcomingWindowDays.value = summary.window_days
+    return summary
+  } catch {
+    return null
   }
 }
 
@@ -1223,6 +1316,7 @@ async function handleRecurringSubmit() {
     } else {
       await financesStore.createRecurring(payload)
     }
+    await loadUpcomingRecurring()
     resetRecurringForm()
   } catch (error) {
     recurringFormError.value = error instanceof Error ? error.message : 'Revisa los datos e inténtalo de nuevo.'
@@ -1286,6 +1380,7 @@ async function handleDeleteRecurring(rule) {
 
   try {
     await financesStore.deleteRecurring(rule.id)
+    await loadUpcomingRecurring()
     if (editingRecurringId.value === rule.id) {
       resetRecurringForm()
     }
@@ -1299,6 +1394,7 @@ async function toggleRecurringActive(rule) {
     await financesStore.updateRecurring(rule.id, {
       is_active: !rule.is_active,
     })
+    await loadUpcomingRecurring()
   } catch {
     return
   }

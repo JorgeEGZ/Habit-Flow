@@ -50,6 +50,13 @@ export async function getSpendingByCategory(month) {
   return data
 }
 
+export async function getUpcomingRecurring(days = 30) {
+  const { data } = await api.get('/finances/insights/upcoming-recurring', {
+    params: { days },
+  })
+  return data
+}
+
 export async function getTransaction(transactionId) {
   const { data } = await api.get(`/finances/transactions/${transactionId}`)
   return data

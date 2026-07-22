@@ -39,6 +39,49 @@ async def test_spending_by_category_requires_bearer(client: AsyncClient) -> None
     assert response.status_code == 401
 
 
+async def test_upcoming_recurring_requires_bearer(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/finances/insights/upcoming-recurring")
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("days", [1, 8, 29, 31, "invalid"])
+async def test_upcoming_recurring_rejects_invalid_days(
+    client: AsyncClient,
+    days: int | str,
+) -> None:
+    token = await _register_and_login(client, email=f"invalid-days-{days}@example.com")
+    response = await client.get(
+        "/api/v1/finances/insights/upcoming-recurring",
+        headers=_auth_headers(token),
+        params={"days": days},
+    )
+    assert response.status_code == 422
+
+
+async def test_upcoming_recurring_defaults_to_thirty_days_and_app_date(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 7, 22))
+    token = await _register_and_login(client, email="default-upcoming@example.com")
+
+    response = await client.get(
+        "/api/v1/finances/insights/upcoming-recurring",
+        headers=_auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "period_start": "2026-07-22",
+        "period_end": "2026-08-20",
+        "window_days": 30,
+        "total_income": 0,
+        "total_expenses": 0,
+        "net": 0,
+        "date_groups": [],
+    }
+
+
 @pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
 async def test_spending_by_category_rejects_invalid_month(
     client: AsyncClient,

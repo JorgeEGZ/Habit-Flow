@@ -15,7 +15,14 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.modules.finances import repository as finances_repo
-from app.modules.finances.models import Account, Category, RecurringTransaction, Transaction
+from app.modules.finances.models import (
+    ENTRY_EXPENSE,
+    ENTRY_INCOME,
+    Account,
+    Category,
+    RecurringTransaction,
+    Transaction,
+)
 from app.modules.finances.schemas import (
     AccountCreate,
     AccountUpdate,
@@ -30,10 +37,14 @@ from app.modules.finances.schemas import (
     TransactionCreate,
     TransactionRead,
     TransactionUpdate,
+    UpcomingRecurringDateGroup,
+    UpcomingRecurringOccurrence,
+    UpcomingRecurringRead,
 )
 
 
 MONTH_PATTERN = re.compile(r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")
+UPCOMING_RECURRING_WINDOWS = frozenset({7, 30})
 
 
 def _validate_positive_amount(amount: int, *, label: str) -> None:
@@ -88,6 +99,81 @@ def _share_percentage(amount: int, total: int) -> float:
         (Decimal(amount) * Decimal("100") / Decimal(total)).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+    )
+
+
+def _last_day_of_month(year: int, month: int) -> int:
+    if month == 12:
+        return (date(year + 1, 1, 1) - timedelta(days=1)).day
+    return (date(year, month + 1, 1) - timedelta(days=1)).day
+
+
+def _iter_daily_occurrences(
+    *, start_date: date, end_date: date | None, period_start: date, period_end: date
+) -> list[date]:
+    first_date = max(start_date, period_start)
+    last_date = min(end_date or period_end, period_end)
+    if first_date > last_date:
+        return []
+    return [first_date + timedelta(days=offset) for offset in range((last_date - first_date).days + 1)]
+
+
+def _iter_weekly_occurrences(
+    *, start_date: date, end_date: date | None, period_start: date, period_end: date
+) -> list[date]:
+    days_since_start = max((period_start - start_date).days, 0)
+    first_date = start_date + timedelta(days=((days_since_start + 6) // 7) * 7)
+    last_date = min(end_date or period_end, period_end)
+    if first_date > last_date:
+        return []
+    return [first_date + timedelta(days=offset) for offset in range(0, (last_date - first_date).days + 1, 7)]
+
+
+def _iter_monthly_occurrences(
+    *, start_date: date, end_date: date | None, period_start: date, period_end: date
+) -> list[date]:
+    first_month_date = max(start_date, period_start)
+    year, month = first_month_date.year, first_month_date.month
+    last_date = min(end_date or period_end, period_end)
+    occurrences: list[date] = []
+
+    while date(year, month, 1) <= last_date:
+        occurrence = date(year, month, min(start_date.day, _last_day_of_month(year, month)))
+        if occurrence >= start_date and period_start <= occurrence <= last_date:
+            occurrences.append(occurrence)
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+
+    return occurrences
+
+
+def _recurring_occurrence_dates(
+    recurring: RecurringTransaction,
+    *,
+    period_start: date,
+    period_end: date,
+) -> list[date]:
+    if recurring.frequency == "daily":
+        return _iter_daily_occurrences(
+            start_date=recurring.start_date,
+            end_date=recurring.end_date,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    if recurring.frequency == "weekly":
+        return _iter_weekly_occurrences(
+            start_date=recurring.start_date,
+            end_date=recurring.end_date,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    return _iter_monthly_occurrences(
+        start_date=recurring.start_date,
+        end_date=recurring.end_date,
+        period_start=period_start,
+        period_end=period_end,
     )
 
 
@@ -410,6 +496,85 @@ async def get_spending_by_category(
             )
             for category_id, category_name, amount, transaction_count in rows
         ],
+    )
+
+
+async def get_upcoming_recurring(
+    session,
+    *,
+    user_id: uuid.UUID,
+    days: int = 30,
+    today: date | None = None,
+) -> UpcomingRecurringRead:
+    if days not in UPCOMING_RECURRING_WINDOWS:
+        raise ValueError("days must be either 7 or 30.")
+
+    period_start = today or current_app_date()
+    period_end = period_start + timedelta(days=days - 1)
+    rules = await finances_repo.list_active_recurring_overlapping_window(
+        session,
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    grouped: dict[date, list[UpcomingRecurringOccurrence]] = {}
+
+    for recurring, account_name, category_name in rules:
+        for occurrence_date in _recurring_occurrence_dates(
+            recurring,
+            period_start=period_start,
+            period_end=period_end,
+        ):
+            grouped.setdefault(occurrence_date, []).append(
+                UpcomingRecurringOccurrence(
+                    recurring_id=recurring.id,
+                    occurrence_date=occurrence_date,
+                    account_id=recurring.account_id,
+                    account_name=account_name,
+                    category_id=recurring.category_id,
+                    category_name=category_name,
+                    type=recurring.type,
+                    amount=recurring.amount,
+                    description=recurring.description,
+                    frequency=recurring.frequency,
+                )
+            )
+
+    date_groups: list[UpcomingRecurringDateGroup] = []
+    total_income = 0
+    total_expenses = 0
+    for occurrence_date in sorted(grouped):
+        occurrences = sorted(
+            grouped[occurrence_date],
+            key=lambda item: (
+                0 if item.type == ENTRY_EXPENSE else 1,
+                item.category_name,
+                item.description or "",
+                str(item.recurring_id),
+            ),
+        )
+        group_income = sum(item.amount for item in occurrences if item.type == ENTRY_INCOME)
+        group_expenses = sum(item.amount for item in occurrences if item.type == ENTRY_EXPENSE)
+        total_income += group_income
+        total_expenses += group_expenses
+        date_groups.append(
+            UpcomingRecurringDateGroup(
+                date=occurrence_date,
+                total_income=group_income,
+                total_expenses=group_expenses,
+                net=group_income - group_expenses,
+                occurrences=occurrences,
+            )
+        )
+
+    return UpcomingRecurringRead(
+        period_start=period_start,
+        period_end=period_end,
+        window_days=days,
+        total_income=total_income,
+        total_expenses=total_expenses,
+        net=total_income - total_expenses,
+        date_groups=date_groups,
     )
 
 

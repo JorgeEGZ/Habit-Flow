@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Query, Response, status
 
@@ -21,6 +22,7 @@ from app.modules.finances.schemas import (
     TransactionCreate,
     TransactionRead,
     TransactionUpdate,
+    UpcomingRecurringRead,
 )
 
 router = APIRouter(prefix="/finances", tags=["finances"])
@@ -147,6 +149,22 @@ async def get_spending_by_category(
         session,
         user_id=user.id,
         month=month,
+    )
+
+
+@router.get(
+    "/insights/upcoming-recurring",
+    response_model=UpcomingRecurringRead,
+)
+async def get_upcoming_recurring(
+    session: DbSession,
+    user: CurrentUser,
+    days: Literal[7, 30] = Query(default=30),
+) -> UpcomingRecurringRead:
+    return await finances_service.get_upcoming_recurring(
+        session,
+        user_id=user.id,
+        days=days,
     )
 
 

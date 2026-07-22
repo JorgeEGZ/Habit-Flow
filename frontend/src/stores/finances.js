@@ -13,10 +13,13 @@ export const useFinancesStore = defineStore('finances', {
     loadingTransactions: false,
     loadingRecurring: false,
     loadingSpendingByCategory: false,
+    loadingUpcomingRecurring: false,
     submitting: false,
     error: '',
     spendingByCategory: null,
     spendingByCategoryError: '',
+    upcomingRecurring: null,
+    upcomingRecurringError: '',
   }),
   actions: {
     async fetchAccounts() {
@@ -77,6 +80,25 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.loadingSpendingByCategory = false
+      }
+    },
+
+    async fetchUpcomingRecurring(days = 30) {
+      this.loadingUpcomingRecurring = true
+      this.upcomingRecurringError = ''
+      this.upcomingRecurring = null
+
+      try {
+        this.upcomingRecurring = await financesService.getUpcomingRecurring(days)
+        return this.upcomingRecurring
+      } catch (error) {
+        this.upcomingRecurringError = getApiErrorMessage(
+          error,
+          'No fue posible cargar los próximos movimientos.',
+        )
+        throw error
+      } finally {
+        this.loadingUpcomingRecurring = false
       }
     },
 

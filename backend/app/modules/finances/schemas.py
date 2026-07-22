@@ -156,3 +156,34 @@ class SpendingByCategoryRead(BaseModel):
     period_end: date
     total_expenses: int = Field(ge=0)
     categories: list[SpendingByCategoryItem]
+
+
+class UpcomingRecurringOccurrence(BaseModel):
+    recurring_id: uuid.UUID
+    occurrence_date: date
+    account_id: uuid.UUID
+    account_name: str
+    category_id: uuid.UUID
+    category_name: str
+    type: EntryType
+    amount: int = Field(gt=0)
+    description: str | None
+    frequency: RecurringFrequency
+
+
+class UpcomingRecurringDateGroup(BaseModel):
+    date: date
+    total_income: int = Field(ge=0)
+    total_expenses: int = Field(ge=0)
+    net: int
+    occurrences: list[UpcomingRecurringOccurrence]
+
+
+class UpcomingRecurringRead(BaseModel):
+    period_start: date
+    period_end: date
+    window_days: Literal[7, 30]
+    total_income: int = Field(ge=0)
+    total_expenses: int = Field(ge=0)
+    net: int
+    date_groups: list[UpcomingRecurringDateGroup]

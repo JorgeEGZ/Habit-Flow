@@ -193,6 +193,140 @@ async def test_spending_by_category_aggregates_monthly_expenses(session: AsyncSe
     assert default_month_summary.month == "2026-07"
 
 
+@pytest.mark.parametrize(
+    ("start_date", "period_start", "period_end", "expected"),
+    [
+        (date(2026, 1, 28), date(2026, 2, 1), date(2026, 3, 31), [date(2026, 2, 28), date(2026, 3, 28)]),
+        (date(2024, 1, 29), date(2024, 2, 1), date(2024, 3, 31), [date(2024, 2, 29), date(2024, 3, 29)]),
+        (date(2026, 1, 30), date(2026, 2, 1), date(2026, 3, 31), [date(2026, 2, 28), date(2026, 3, 30)]),
+        (date(2026, 1, 31), date(2026, 2, 1), date(2026, 3, 31), [date(2026, 2, 28), date(2026, 3, 31)]),
+    ],
+)
+def test_monthly_occurrences_keep_the_permanent_start_day_anchor(
+    start_date: date,
+    period_start: date,
+    period_end: date,
+    expected: list[date],
+) -> None:
+    assert finances_service._iter_monthly_occurrences(
+        start_date=start_date,
+        end_date=None,
+        period_start=period_start,
+        period_end=period_end,
+    ) == expected
+
+
+async def test_upcoming_recurring_projects_active_user_rules_without_writes(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "upcoming-owner@example.com")
+    other_user = await _make_user(session, "upcoming-other@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    other_account = await finances_service.create_account(
+        session, user_id=other_user.id, payload=AccountCreate(name="Other", type="cash", initial_balance=0)
+    )
+    expense = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Housing", type="expense")
+    )
+    bills = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Bills", type="expense")
+    )
+    income = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Salary", type="income")
+    )
+    other_expense = await finances_service.create_category(
+        session, user_id=other_user.id, payload=CategoryCreate(name="Other", type="expense")
+    )
+
+    daily = await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=expense.id, type="expense", amount=100, description="Daily", frequency="daily", start_date=date(2026, 7, 22), end_date=date(2026, 7, 23), is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=bills.id, type="expense", amount=25, description="Utilities", frequency="daily", start_date=date(2026, 7, 22), end_date=date(2026, 7, 22), is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=income.id, type="income", amount=200, description="Weekly", frequency="weekly", start_date=date(2026, 7, 18), end_date=None, is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=expense.id, type="expense", amount=850, description="Rent", frequency="monthly", start_date=date(2026, 1, 31), end_date=None, is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=income.id, type="income", amount=300, description="Salary", frequency="monthly", start_date=date(2026, 7, 22), end_date=None, is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=income.id, type="income", amount=50, description="Future", frequency="daily", start_date=date(2026, 8, 20), end_date=date(2026, 8, 20), is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=expense.id, type="expense", amount=999, description="Paused", frequency="daily", start_date=date(2026, 7, 22), end_date=None, is_active=False),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=expense.id, type="expense", amount=999, description="Expired", frequency="daily", start_date=date(2026, 7, 1), end_date=date(2026, 7, 21), is_active=True),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=other_user.id,
+        payload=RecurringTransactionCreate(account_id=other_account.id, category_id=other_expense.id, type="expense", amount=999, description="Other", frequency="daily", start_date=date(2026, 7, 22), end_date=None, is_active=True),
+    )
+
+    summary = await finances_service.get_upcoming_recurring(
+        session, user_id=user.id, days=30, today=date(2026, 7, 22)
+    )
+
+    assert summary.period_start == date(2026, 7, 22)
+    assert summary.period_end == date(2026, 8, 20)
+    assert summary.total_income == 1150
+    assert summary.total_expenses == 1075
+    assert summary.net == 75
+    assert [group.date for group in summary.date_groups] == [
+        date(2026, 7, 22), date(2026, 7, 23), date(2026, 7, 25), date(2026, 7, 31),
+        date(2026, 8, 1), date(2026, 8, 8), date(2026, 8, 15), date(2026, 8, 20),
+    ]
+    assert [item.description for item in summary.date_groups[0].occurrences] == ["Utilities", "Daily", "Salary"]
+    assert summary.date_groups[3].occurrences[0].description == "Rent"
+    assert daily.last_generated_at is None
+    assert await finances_service.list_transactions(session, user_id=user.id) == []
+
+
+async def test_upcoming_recurring_seven_day_boundary_and_weekly_anchor(session: AsyncSession) -> None:
+    user = await _make_user(session, "upcoming-boundary@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    category = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Food", type="expense")
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(account_id=account.id, category_id=category.id, type="expense", amount=10, description="Weekly", frequency="weekly", start_date=date(2026, 7, 18), end_date=None, is_active=True),
+    )
+
+    summary = await finances_service.get_upcoming_recurring(
+        session, user_id=user.id, days=7, today=date(2026, 7, 22)
+    )
+
+    assert summary.period_end == date(2026, 7, 28)
+    assert [group.date for group in summary.date_groups] == [date(2026, 7, 25)]
+
+
 async def test_category_crud_and_type_validation(session: AsyncSession) -> None:
     user = await _make_user(session, "fa2@example.com")
     account = await finances_service.create_account(

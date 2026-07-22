@@ -382,6 +382,32 @@ async def list_recurring_for_user(
     return list(result.scalars().all())
 
 
+async def list_active_recurring_overlapping_window(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    period_start: date,
+    period_end: date,
+) -> list[tuple[RecurringTransaction, str, str]]:
+    """Load active user rules that can produce an occurrence in the window."""
+    stmt = (
+        select(RecurringTransaction, Account.name, Category.name)
+        .join(Account, Account.id == RecurringTransaction.account_id)
+        .join(Category, Category.id == RecurringTransaction.category_id)
+        .where(
+            RecurringTransaction.user_id == user_id,
+            RecurringTransaction.is_active.is_(True),
+            RecurringTransaction.start_date <= period_end,
+            (
+                RecurringTransaction.end_date.is_(None)
+                | (RecurringTransaction.end_date >= period_start)
+            ),
+        )
+    )
+    result = await session.execute(stmt)
+    return [(row[0], row[1], row[2]) for row in result.all()]
+
+
 async def create_recurring(
     session: AsyncSession,
     *,

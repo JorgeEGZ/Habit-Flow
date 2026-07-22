@@ -2818,6 +2818,174 @@ svg {
   background: var(--app-accent);
 }
 
+.finance-upcoming-insight {
+  display: grid;
+  gap: 1.1rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--app-border);
+  border-radius: 1rem;
+  background: rgba(15, 23, 34, 0.82);
+}
+
+.finance-upcoming-insight__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.finance-upcoming-insight__header > div:first-child {
+  min-width: 0;
+}
+
+.finance-upcoming-insight__eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--app-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.finance-upcoming-insight h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.025em;
+}
+
+.finance-upcoming-insight__header p:not(.finance-upcoming-insight__eyebrow) {
+  max-width: 48rem;
+  margin: 0.4rem 0 0;
+  color: var(--app-text-muted);
+}
+
+.finance-upcoming-insight__controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: rgba(22, 33, 48, 0.42);
+}
+
+.finance-upcoming-insight__control--active {
+  border-color: rgba(85, 126, 230, 0.55);
+  background: var(--app-accent-soft);
+}
+
+.finance-upcoming-skeleton {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.finance-upcoming-skeleton__row {
+  display: block;
+  height: 4.5rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.8rem;
+  background: linear-gradient(
+    90deg,
+    rgba(154, 166, 181, 0.08),
+    rgba(154, 166, 181, 0.18),
+    rgba(154, 166, 181, 0.08)
+  );
+  background-size: 200% 100%;
+  animation: dashboard-shimmer 1.5s infinite;
+}
+
+.finance-upcoming-insight__error {
+  margin: 0;
+  color: var(--app-danger);
+}
+
+.finance-upcoming-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.finance-upcoming-summary > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: rgba(22, 33, 48, 0.42);
+}
+
+.finance-upcoming-summary span,
+.finance-upcoming-occurrence__main span {
+  color: var(--app-text-muted);
+  font-size: 0.82rem;
+}
+
+.finance-upcoming-summary strong,
+.finance-upcoming-group__header > span,
+.finance-upcoming-occurrence__amount strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-upcoming-groups {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.finance-upcoming-group {
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 0.8rem;
+  background: rgba(16, 24, 35, 0.58);
+}
+
+.finance-upcoming-group__header,
+.finance-upcoming-occurrence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.finance-upcoming-group__header {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--app-border);
+  background: rgba(22, 33, 48, 0.38);
+}
+
+.finance-upcoming-occurrence {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.finance-upcoming-occurrence:last-child {
+  border-bottom: 0;
+}
+
+.finance-upcoming-occurrence__main,
+.finance-upcoming-occurrence__amount {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.finance-upcoming-occurrence__main strong,
+.finance-upcoming-occurrence__main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.finance-upcoming-occurrence__amount {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.finance-upcoming-occurrence__type {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .finance-tabs {
   display: flex;
   gap: 0.35rem;
@@ -3157,6 +3325,7 @@ svg {
   .finance-workspace__header,
   .finance-panel-header,
   .finance-spending-insight__header,
+  .finance-upcoming-insight__header,
   .finance-toolbar__actions {
     align-items: stretch;
     flex-direction: column;
@@ -3183,9 +3352,25 @@ svg {
     padding: 1rem;
   }
 
+  .finance-upcoming-insight {
+    padding: 1rem;
+  }
+
   .finance-spending-insight__month {
     flex-basis: auto;
     width: 100%;
+  }
+
+  .finance-upcoming-insight__controls {
+    width: 100%;
+  }
+
+  .finance-upcoming-insight__controls .p-button {
+    flex: 1 1 0;
+  }
+
+  .finance-upcoming-summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .finance-tabs {
