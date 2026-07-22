@@ -61,6 +61,54 @@ class CategoryRead(CategoryBase):
     updated_at: datetime
 
 
+class MonthlyCategoryBudgetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: uuid.UUID
+    month: str = Field(pattern=r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")
+    amount: int = Field(gt=0, le=10**12)
+
+
+class MonthlyCategoryBudgetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: int = Field(gt=0, le=10**12)
+
+
+class MonthlyCategoryBudgetRead(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    category_id: uuid.UUID
+    month: str
+    amount: int = Field(gt=0)
+    created_at: datetime
+    updated_at: datetime
+
+
+class MonthlyCategoryBudgetProgress(BaseModel):
+    budget_id: uuid.UUID
+    category_id: uuid.UUID
+    category_name: str
+    budget_amount: int = Field(gt=0)
+    spent_amount: int = Field(ge=0)
+    remaining_amount: int = Field(ge=0)
+    over_budget_amount: int = Field(ge=0)
+    transaction_count: int = Field(ge=0)
+    usage_percentage: float = Field(ge=0)
+    exceeded: bool
+
+
+class MonthlyCategoryBudgetsRead(BaseModel):
+    month: str
+    period_start: date
+    period_end: date
+    total_budget_amount: int = Field(ge=0)
+    total_spent_amount: int = Field(ge=0)
+    total_remaining_amount: int = Field(ge=0)
+    total_over_budget_amount: int = Field(ge=0)
+    budgets: list[MonthlyCategoryBudgetProgress]
+
+
 class TransactionBase(BaseModel):
     account_id: uuid.UUID
     category_id: uuid.UUID

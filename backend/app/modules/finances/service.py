@@ -5,10 +5,15 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.config import get_app_timezone, get_settings
 from app.core.exceptions import (
     AccountNotFound,
+    BudgetRequiresExpenseCategory,
     CategoryNotFound,
+    MonthlyBudgetAlreadyExists,
+    MonthlyBudgetNotFound,
     RecurringTransactionNotFound,
     ResourceInUse,
     TransactionNotFound,
@@ -20,6 +25,7 @@ from app.modules.finances.models import (
     ENTRY_INCOME,
     Account,
     Category,
+    MonthlyCategoryBudget,
     RecurringTransaction,
     Transaction,
 )
@@ -29,6 +35,11 @@ from app.modules.finances.schemas import (
     CategoryCreate,
     CategoryRead,
     CategoryUpdate,
+    MonthlyCategoryBudgetCreate,
+    MonthlyCategoryBudgetProgress,
+    MonthlyCategoryBudgetRead,
+    MonthlyCategoryBudgetUpdate,
+    MonthlyCategoryBudgetsRead,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
@@ -99,6 +110,18 @@ def _share_percentage(amount: int, total: int) -> float:
         (Decimal(amount) * Decimal("100") / Decimal(total)).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+    )
+
+
+def _monthly_budget_read(budget: MonthlyCategoryBudget) -> MonthlyCategoryBudgetRead:
+    return MonthlyCategoryBudgetRead(
+        id=budget.id,
+        user_id=budget.user_id,
+        category_id=budget.category_id,
+        month=budget.month_start.strftime("%Y-%m"),
+        amount=budget.amount,
+        created_at=budget.created_at,
+        updated_at=budget.updated_at,
     )
 
 
@@ -228,6 +251,22 @@ async def _get_recurring_or_404(
     return recurring
 
 
+async def _get_monthly_budget_or_404(
+    session,
+    *,
+    user_id: uuid.UUID,
+    budget_id: uuid.UUID,
+) -> MonthlyCategoryBudget:
+    budget = await finances_repo.get_monthly_budget_by_id_and_user(
+        session,
+        budget_id=budget_id,
+        user_id=user_id,
+    )
+    if not budget:
+        raise MonthlyBudgetNotFound()
+    return budget
+
+
 def _validate_update_type_change_block(
     *,
     existing_type: str,
@@ -353,7 +392,10 @@ async def update_category(
         recurring_count = await finances_repo.count_recurring_for_category(
             session, category_id=category.id, user_id=user_id
         )
-        if tx_count > 0 or recurring_count > 0:
+        budget_count = await finances_repo.count_monthly_budgets_for_category(
+            session, category_id=category.id, user_id=user_id
+        )
+        if tx_count > 0 or recurring_count > 0 or budget_count > 0:
             raise ResourceInUse("Category type cannot be changed while it is in use.")
 
     return await finances_repo.update_category(session, category, fields=fields)
@@ -369,7 +411,128 @@ async def delete_category(session, *, user_id: uuid.UUID, category_id: uuid.UUID
         session, category_id=category.id, user_id=user_id
     ) > 0:
         raise ResourceInUse("Category has recurring transactions.")
+    if await finances_repo.count_monthly_budgets_for_category(
+        session, category_id=category.id, user_id=user_id
+    ) > 0:
+        raise ResourceInUse("Category has monthly budgets.")
     await finances_repo.delete_category(session, category)
+
+
+# ---------- Monthly budgets ----------
+
+async def get_monthly_budgets(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+    today: date | None = None,
+) -> MonthlyCategoryBudgetsRead:
+    selected_month, period_start, period_end = _spending_month_bounds(
+        month,
+        today=today or current_app_date(),
+    )
+    budget_rows = await finances_repo.list_monthly_budgets_for_user_month(
+        session,
+        user_id=user_id,
+        month_start=period_start,
+    )
+    spending_rows = await finances_repo.get_expense_spending_by_category(
+        session,
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    spending_by_category = {
+        category_id: (amount, transaction_count)
+        for category_id, _category_name, amount, transaction_count in spending_rows
+    }
+
+    budgets: list[MonthlyCategoryBudgetProgress] = []
+    for budget, category_name in budget_rows:
+        spent_amount, transaction_count = spending_by_category.get(budget.category_id, (0, 0))
+        budgets.append(
+            MonthlyCategoryBudgetProgress(
+                budget_id=budget.id,
+                category_id=budget.category_id,
+                category_name=category_name,
+                budget_amount=budget.amount,
+                spent_amount=spent_amount,
+                remaining_amount=max(budget.amount - spent_amount, 0),
+                over_budget_amount=max(spent_amount - budget.amount, 0),
+                transaction_count=transaction_count,
+                usage_percentage=_share_percentage(spent_amount, budget.amount),
+                exceeded=spent_amount > budget.amount,
+            )
+        )
+
+    budgets.sort(
+        key=lambda item: (
+            0 if item.exceeded else 1,
+            -item.usage_percentage,
+            item.category_name.casefold(),
+            str(item.category_id),
+        )
+    )
+    return MonthlyCategoryBudgetsRead(
+        month=selected_month,
+        period_start=period_start,
+        period_end=period_end,
+        total_budget_amount=sum(item.budget_amount for item in budgets),
+        total_spent_amount=sum(item.spent_amount for item in budgets),
+        total_remaining_amount=sum(item.remaining_amount for item in budgets),
+        total_over_budget_amount=sum(item.over_budget_amount for item in budgets),
+        budgets=budgets,
+    )
+
+
+async def create_monthly_budget(
+    session,
+    *,
+    user_id: uuid.UUID,
+    payload: MonthlyCategoryBudgetCreate,
+) -> MonthlyCategoryBudgetRead:
+    category = await _get_category_or_404(session, user_id=user_id, category_id=payload.category_id)
+    if category.type != ENTRY_EXPENSE:
+        raise BudgetRequiresExpenseCategory()
+
+    _selected_month, month_start, _period_end = _spending_month_bounds(
+        payload.month,
+        today=current_app_date(),
+    )
+    try:
+        budget = await finances_repo.create_monthly_budget(
+            session,
+            user_id=user_id,
+            category_id=category.id,
+            month_start=month_start,
+            amount=payload.amount,
+        )
+    except IntegrityError as exc:
+        await session.rollback()
+        raise MonthlyBudgetAlreadyExists() from exc
+    return _monthly_budget_read(budget)
+
+
+async def update_monthly_budget(
+    session,
+    *,
+    user_id: uuid.UUID,
+    budget_id: uuid.UUID,
+    payload: MonthlyCategoryBudgetUpdate,
+) -> MonthlyCategoryBudgetRead:
+    budget = await _get_monthly_budget_or_404(session, user_id=user_id, budget_id=budget_id)
+    updated = await finances_repo.update_monthly_budget(session, budget, amount=payload.amount)
+    return _monthly_budget_read(updated)
+
+
+async def delete_monthly_budget(
+    session,
+    *,
+    user_id: uuid.UUID,
+    budget_id: uuid.UUID,
+) -> None:
+    budget = await _get_monthly_budget_or_404(session, user_id=user_id, budget_id=budget_id)
+    await finances_repo.delete_monthly_budget(session, budget)
 
 
 # ---------- Transactions ----------

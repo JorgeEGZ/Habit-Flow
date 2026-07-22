@@ -135,6 +135,15 @@ const router = createRouter({
           },
         },
         {
+          path: 'finances/budgets',
+          name: 'finances-budgets',
+          component: () => import('../pages/finances/FinancesPage.vue'),
+          meta: {
+            title: 'Presupuestos',
+            section: 'finances',
+          },
+        },
+        {
           path: 'finances/recurring',
           name: 'finances-recurring',
           component: () => import('../pages/finances/FinancesPage.vue'),

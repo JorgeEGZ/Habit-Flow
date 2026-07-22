@@ -174,6 +174,57 @@
         </div>
       </section>
 
+      <section v-else-if="isBudgetsWorkspace" class="finance-tab-panel finance-budget-panel">
+        <header class="finance-panel-header">
+          <div>
+            <h2>Presupuestos mensuales</h2>
+            <p>Define cuánto planeas gastar por categoría y compáralo con tus movimientos reales.</p>
+          </div>
+          <Button type="button" label="Nuevo presupuesto" icon="pi pi-plus" @click="openCreateMonthlyBudgetDialog" />
+        </header>
+
+        <label class="finance-budget-month">
+          <span>Mes</span>
+          <input v-model="budgetMonth" class="finance-input" type="month" />
+        </label>
+
+        <div v-if="financesStore.loadingMonthlyBudgets" class="finance-skeleton-grid" aria-label="Cargando presupuestos">
+          <article v-for="index in 3" :key="index" class="finance-skeleton"><span class="finance-skeleton__line finance-skeleton__line--title"></span><span class="finance-skeleton__line"></span></article>
+        </div>
+        <p v-else-if="financesStore.monthlyBudgetsError" class="finance-budget-panel__error" role="alert">
+          {{ financesStore.monthlyBudgetsError }}
+        </p>
+        <div v-else-if="!monthlyBudgets?.budgets.length" class="dashboard-empty">
+          No tienes presupuestos para este mes.
+        </div>
+        <template v-else>
+          <div class="finance-budget-summary" aria-label="Resumen de presupuestos">
+            <div><span>Presupuestado</span><strong>{{ formatCurrencyCop(monthlyBudgets.total_budget_amount) }}</strong></div>
+            <div><span>Gastado</span><strong>{{ formatCurrencyCop(monthlyBudgets.total_spent_amount) }}</strong></div>
+            <div><span>Disponible</span><strong>{{ formatCurrencyCop(monthlyBudgets.total_remaining_amount) }}</strong></div>
+            <div><span>Excedido</span><strong class="transaction-amount--expense">{{ formatCurrencyCop(monthlyBudgets.total_over_budget_amount) }}</strong></div>
+          </div>
+
+          <div class="finance-data-table finance-data-table--budgets">
+            <div class="finance-data-table__head">
+              <span>Categoría</span><span>Presupuesto</span><span>Gastado</span><span>Disponible</span><span>Uso</span><span>Estado</span><span>Acciones</span>
+            </div>
+            <article v-for="budget in monthlyBudgets.budgets" :key="budget.budget_id" class="finance-data-row">
+              <div class="finance-data-cell finance-data-cell--primary"><span>Categoría</span><strong>{{ budget.category_name }}</strong><p>{{ movementCountLabel(budget.transaction_count) }}</p></div>
+              <div class="finance-data-cell finance-data-cell--amount"><span>Presupuesto</span><strong>{{ formatCurrencyCop(budget.budget_amount) }}</strong></div>
+              <div class="finance-data-cell finance-data-cell--amount"><span>Gastado</span><strong :class="budget.exceeded ? 'transaction-amount--expense' : ''">{{ formatCurrencyCop(budget.spent_amount) }}</strong></div>
+              <div class="finance-data-cell finance-data-cell--amount"><span>{{ budget.exceeded ? 'Excedido' : 'Disponible' }}</span><strong :class="budget.exceeded ? 'transaction-amount--expense' : ''">{{ formatCurrencyCop(budget.exceeded ? budget.over_budget_amount : budget.remaining_amount) }}</strong></div>
+              <div class="finance-data-cell finance-budget-usage"><span>Uso</span><strong>{{ formatPercentage(budget.usage_percentage) }}</strong><div class="finance-budget-usage__bar" role="progressbar" :aria-label="`${budget.category_name}: ${formatPercentage(budget.usage_percentage)} del presupuesto`" :aria-valuenow="budget.usage_percentage" aria-valuemin="0" aria-valuemax="100"><span :class="budgetProgressClass(budget)" :style="{ width: `${Math.min(budget.usage_percentage, 100)}%` }"></span></div></div>
+              <div class="finance-data-cell"><span>Estado</span><span class="finance-budget-status" :class="budgetStatusClass(budget)">{{ budgetStatusLabel(budget) }}</span></div>
+              <div class="finance-data-row__actions">
+                <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar presupuesto" @click="startMonthlyBudgetEdit(budget)" />
+                <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar presupuesto" :disabled="financesStore.submitting" @click="handleDeleteMonthlyBudget(budget)" />
+              </div>
+            </article>
+          </div>
+        </template>
+      </section>
+
       <template v-else-if="isRecurringWorkspace">
         <section class="finance-upcoming-insight" aria-labelledby="upcoming-recurring-title">
           <header class="finance-upcoming-insight__header">
@@ -521,6 +572,48 @@
     </Dialog>
 
     <Dialog
+      v-model:visible="showMonthlyBudgetDialog"
+      modal
+      dismissableMask
+      class="app-dialog"
+      :header="editingMonthlyBudgetId ? 'Editar presupuesto' : 'Nuevo presupuesto'"
+    >
+      <p class="finance-panel__subtitle">
+        {{ editingMonthlyBudgetId ? 'Actualiza el monto planificado para esta categoría.' : 'Define cuánto planeas gastar en el mes seleccionado.' }}
+      </p>
+
+      <p v-if="monthlyBudgetFormError" class="dashboard-page__alert finance-panel__alert">
+        {{ monthlyBudgetFormError }}
+      </p>
+
+      <form id="monthly-budget-editor-form" class="finance-form" @submit.prevent="handleMonthlyBudgetSubmit">
+        <label class="finance-field">
+          <span>Mes</span>
+          <input :value="budgetMonth" class="finance-input" type="month" disabled />
+        </label>
+
+        <label class="finance-field">
+          <span>Categoría</span>
+          <select v-model="monthlyBudgetForm.categoryId" class="finance-input" :disabled="Boolean(editingMonthlyBudgetId)">
+            <option value="">Selecciona una categoría de gasto</option>
+            <option v-for="category in monthlyBudgetCategoryOptions" :key="category.id" :value="category.id">
+              {{ category.name }}
+            </option>
+          </select>
+        </label>
+
+        <label class="finance-field">
+          <span>Presupuesto</span>
+          <input v-model.number="monthlyBudgetForm.amount" class="finance-input" type="number" min="1" step="1" inputmode="numeric" />
+        </label>
+      </form>
+      <template #footer>
+        <Button type="submit" form="monthly-budget-editor-form" :label="editingMonthlyBudgetId ? 'Guardar cambios' : 'Crear presupuesto'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetMonthlyBudgetForm" />
+      </template>
+    </Dialog>
+
+    <Dialog
       v-model:visible="showAccountDialog"
       modal
       dismissableMask
@@ -645,16 +738,21 @@ const editingAccountId = ref('')
 const editingCategoryId = ref('')
 const editingTransactionId = ref('')
 const editingRecurringId = ref('')
+const editingMonthlyBudgetId = ref('')
 const showAccountDialog = ref(false)
 const showCategoryDialog = ref(false)
 const showTransactionDialog = ref(false)
 const showRecurringDialog = ref(false)
+const showMonthlyBudgetDialog = ref(false)
 const accountFormError = ref('')
 const categoryFormError = ref('')
 const transactionFormError = ref('')
 const recurringFormError = ref('')
+const monthlyBudgetFormError = ref('')
 const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
+const budgetMonth = ref('')
+const appliedBudgetMonth = ref('')
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
 
@@ -688,6 +786,11 @@ const recurringForm = reactive({
   startDate: getLocalDateString(),
   endDate: '',
   isActive: true,
+})
+
+const monthlyBudgetForm = reactive({
+  categoryId: '',
+  amount: 1,
 })
 
 const transactionFilters = reactive({
@@ -734,12 +837,14 @@ const sortOptions = [
 
 const financeNavigation = computed(() => [
   { label: 'Movimientos', routeName: 'finances-movements', active: route.name === 'finances-movements' },
+  { label: 'Presupuestos', routeName: 'finances-budgets', active: route.name === 'finances-budgets' },
   { label: 'Recurrentes', routeName: 'finances-recurring', active: route.name === 'finances-recurring' },
   { label: 'Cuentas', routeName: 'finances-accounts', active: route.name === 'finances-accounts' },
   { label: 'Categorías', routeName: 'finances-categories', active: route.name === 'finances-categories' },
 ])
 
 const isMovementsWorkspace = computed(() => route.name === 'finances-movements')
+const isBudgetsWorkspace = computed(() => route.name === 'finances-budgets')
 const isRecurringWorkspace = computed(() => route.name === 'finances-recurring')
 const isAccountsWorkspace = computed(() => route.name === 'finances-accounts')
 
@@ -748,6 +853,7 @@ const categories = computed(() => financesStore.categories)
 const transactions = computed(() => financesStore.transactions)
 const recurringRules = computed(() => financesStore.recurring)
 const spendingByCategory = computed(() => financesStore.spendingByCategory)
+const monthlyBudgets = computed(() => financesStore.monthlyBudgets)
 const upcomingRecurring = computed(() => financesStore.upcomingRecurring)
 const recurringLoading = computed(() => loadingFinanceData.value || financesStore.loadingRecurring)
 const transactionsLoading = computed(() => loadingFinanceData.value || financesStore.loadingTransactions)
@@ -759,6 +865,18 @@ const transactionCategoryOptions = computed(() =>
 const recurringCategoryOptions = computed(() =>
   categories.value.filter((category) => category.type === recurringForm.type),
 )
+
+const monthlyBudgetCategoryOptions = computed(() => {
+  const budgetedCategoryIds = new Set(
+    (monthlyBudgets.value?.budgets ?? []).map((budget) => budget.category_id),
+  )
+
+  return categories.value.filter(
+    (category) =>
+      category.type === 'expense' &&
+      (category.id === monthlyBudgetForm.categoryId || !budgetedCategoryIds.has(category.id)),
+  )
+})
 
 const accountById = computed(() =>
   accounts.value.reduce((lookup, account) => {
@@ -873,6 +991,12 @@ watch(spendingMonth, (month) => {
   }
 })
 
+watch(budgetMonth, (month) => {
+  if (isBudgetsWorkspace.value && month && month !== appliedBudgetMonth.value) {
+    void loadMonthlyBudgets(month)
+  }
+})
+
 watch(upcomingWindowDays, (days) => {
   if (isRecurringWorkspace.value && days !== appliedUpcomingWindowDays.value) {
     void loadUpcomingRecurring(days)
@@ -884,6 +1008,9 @@ watch(
   (routeName) => {
     if (routeName === 'finances-recurring') {
       void loadUpcomingRecurring()
+    }
+    if (routeName === 'finances-budgets') {
+      void loadMonthlyBudgets()
     }
   },
 )
@@ -963,6 +1090,39 @@ function movementCountLabel(count) {
   return `${count} ${count === 1 ? 'movimiento' : 'movimientos'}`
 }
 
+function budgetStatusLabel(budget) {
+  if (budget.exceeded) {
+    return 'Excedido'
+  }
+  if (Number(budget.usage_percentage) === 100) {
+    return 'Límite alcanzado'
+  }
+  if (Number(budget.usage_percentage) >= 80) {
+    return 'Cerca del límite'
+  }
+  return 'En curso'
+}
+
+function budgetStatusClass(budget) {
+  if (budget.exceeded) {
+    return 'finance-budget-status--danger'
+  }
+  if (Number(budget.usage_percentage) >= 80) {
+    return 'finance-budget-status--warning'
+  }
+  return 'finance-budget-status--active'
+}
+
+function budgetProgressClass(budget) {
+  if (budget.exceeded) {
+    return 'finance-budget-progress--danger'
+  }
+  if (Number(budget.usage_percentage) >= 80) {
+    return 'finance-budget-progress--warning'
+  }
+  return 'finance-budget-progress--active'
+}
+
 function resetAccountForm() {
   editingAccountId.value = ''
   accountForm.name = ''
@@ -1007,6 +1167,14 @@ function resetRecurringForm() {
   showRecurringDialog.value = false
 }
 
+function resetMonthlyBudgetForm() {
+  editingMonthlyBudgetId.value = ''
+  monthlyBudgetForm.categoryId = ''
+  monthlyBudgetForm.amount = 1
+  monthlyBudgetFormError.value = ''
+  showMonthlyBudgetDialog.value = false
+}
+
 function openCreateAccountDialog() {
   resetAccountForm()
   showAccountDialog.value = true
@@ -1025,6 +1193,11 @@ function openCreateTransactionDialog() {
 function openCreateRecurringDialog() {
   resetRecurringForm()
   showRecurringDialog.value = true
+}
+
+function openCreateMonthlyBudgetDialog() {
+  resetMonthlyBudgetForm()
+  showMonthlyBudgetDialog.value = true
 }
 
 function resetTransactionFilters() {
@@ -1076,6 +1249,14 @@ function startRecurringEdit(rule) {
   recurringForm.isActive = Boolean(rule.is_active)
   recurringFormError.value = ''
   showRecurringDialog.value = true
+}
+
+function startMonthlyBudgetEdit(budget) {
+  editingMonthlyBudgetId.value = budget.budget_id
+  monthlyBudgetForm.categoryId = budget.category_id
+  monthlyBudgetForm.amount = budget.budget_amount
+  monthlyBudgetFormError.value = ''
+  showMonthlyBudgetDialog.value = true
 }
 
 function buildAccountPayload() {
@@ -1220,6 +1401,31 @@ function buildRecurringPayload() {
   }
 }
 
+function buildMonthlyBudgetPayload() {
+  const categoryId = monthlyBudgetForm.categoryId
+  const amount = Number(monthlyBudgetForm.amount)
+  const category = categoryById.value[categoryId]
+
+  if (!budgetMonth.value) {
+    throw new Error('Selecciona un mes válido.')
+  }
+  if (!categoryId || !category) {
+    throw new Error('Selecciona una categoría de gasto.')
+  }
+  if (category.type !== 'expense') {
+    throw new Error('Solo puedes crear presupuestos para categorías de gasto.')
+  }
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error('El presupuesto debe ser mayor que cero.')
+  }
+
+  return {
+    category_id: categoryId,
+    month: budgetMonth.value,
+    amount,
+  }
+}
+
 async function loadFinanceData() {
   loadingFinanceData.value = true
   try {
@@ -1230,6 +1436,7 @@ async function loadFinanceData() {
       financesStore.fetchRecurring(),
       dashboardStore.fetchFinances(),
       loadSpendingByCategory(),
+      isBudgetsWorkspace.value ? loadMonthlyBudgets() : Promise.resolve(),
       isRecurringWorkspace.value ? loadUpcomingRecurring() : Promise.resolve(),
     ])
   } finally {
@@ -1258,6 +1465,23 @@ async function loadSpendingByCategory(month = spendingMonth.value || undefined) 
     appliedSpendingMonth.value = summary.month
     if (!spendingMonth.value) {
       spendingMonth.value = summary.month
+    }
+    return summary
+  } catch {
+    return null
+  }
+}
+
+async function loadMonthlyBudgets(month = budgetMonth.value || undefined) {
+  if (!isBudgetsWorkspace.value) {
+    return null
+  }
+
+  try {
+    const summary = await financesStore.fetchMonthlyBudgets(month)
+    appliedBudgetMonth.value = summary.month
+    if (!budgetMonth.value) {
+      budgetMonth.value = summary.month
     }
     return summary
   } catch {
@@ -1341,6 +1565,22 @@ async function handleRecurringSubmit() {
   }
 }
 
+async function handleMonthlyBudgetSubmit() {
+  monthlyBudgetFormError.value = ''
+
+  try {
+    const payload = buildMonthlyBudgetPayload()
+    if (editingMonthlyBudgetId.value) {
+      await financesStore.updateMonthlyBudget(editingMonthlyBudgetId.value, { amount: payload.amount }, payload.month)
+    } else {
+      await financesStore.createMonthlyBudget(payload)
+    }
+    resetMonthlyBudgetForm()
+  } catch (error) {
+    monthlyBudgetFormError.value = error instanceof Error ? error.message : 'No fue posible guardar el presupuesto.'
+  }
+}
+
 async function handleDeleteAccount(account) {
   if (!window.confirm(`¿Eliminar la cuenta "${account.name}"?`)) {
     return
@@ -1401,6 +1641,21 @@ async function handleDeleteRecurring(rule) {
     await loadUpcomingRecurring()
     if (editingRecurringId.value === rule.id) {
       resetRecurringForm()
+    }
+  } catch {
+    return
+  }
+}
+
+async function handleDeleteMonthlyBudget(budget) {
+  if (!window.confirm(`¿Eliminar el presupuesto de "${budget.category_name}"?`)) {
+    return
+  }
+
+  try {
+    await financesStore.deleteMonthlyBudget(budget.budget_id, budgetMonth.value)
+    if (editingMonthlyBudgetId.value === budget.budget_id) {
+      resetMonthlyBudgetForm()
     }
   } catch {
     return

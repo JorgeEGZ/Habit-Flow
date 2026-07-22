@@ -15,6 +15,10 @@ from app.modules.finances.schemas import (
     CategoryCreate,
     CategoryRead,
     CategoryUpdate,
+    MonthlyCategoryBudgetCreate,
+    MonthlyCategoryBudgetRead,
+    MonthlyCategoryBudgetUpdate,
+    MonthlyCategoryBudgetsRead,
     RecurringTransactionCreate,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
@@ -131,6 +135,67 @@ async def delete_category(
     user: CurrentUser,
 ) -> Response:
     await finances_service.delete_category(session, user_id=user.id, category_id=category_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------- Monthly budgets ----------
+
+@router.get("/budgets", response_model=MonthlyCategoryBudgetsRead)
+async def get_monthly_budgets(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> MonthlyCategoryBudgetsRead:
+    return await finances_service.get_monthly_budgets(
+        session,
+        user_id=user.id,
+        month=month,
+    )
+
+
+@router.post(
+    "/budgets",
+    response_model=MonthlyCategoryBudgetRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_monthly_budget(
+    payload: MonthlyCategoryBudgetCreate,
+    session: DbSession,
+    user: CurrentUser,
+) -> MonthlyCategoryBudgetRead:
+    return await finances_service.create_monthly_budget(
+        session,
+        user_id=user.id,
+        payload=payload,
+    )
+
+
+@router.patch("/budgets/{budget_id}", response_model=MonthlyCategoryBudgetRead)
+async def update_monthly_budget(
+    budget_id: uuid.UUID,
+    payload: MonthlyCategoryBudgetUpdate,
+    session: DbSession,
+    user: CurrentUser,
+) -> MonthlyCategoryBudgetRead:
+    return await finances_service.update_monthly_budget(
+        session,
+        user_id=user.id,
+        budget_id=budget_id,
+        payload=payload,
+    )
+
+
+@router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_monthly_budget(
+    budget_id: uuid.UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> Response:
+    await finances_service.delete_monthly_budget(
+        session,
+        user_id=user.id,
+        budget_id=budget_id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

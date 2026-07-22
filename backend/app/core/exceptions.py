@@ -105,6 +105,24 @@ class RecurringTransactionNotFound(DomainError):
     message = "Recurring transaction not found."
 
 
+class MonthlyBudgetNotFound(DomainError):
+    code = "monthly_budget_not_found"
+    status_code = 404
+    message = "Monthly budget not found."
+
+
+class MonthlyBudgetAlreadyExists(DomainError):
+    code = "monthly_budget_already_exists"
+    status_code = 409
+    message = "A monthly budget already exists for this category and month."
+
+
+class BudgetRequiresExpenseCategory(DomainError):
+    code = "budget_requires_expense_category"
+    status_code = 400
+    message = "Monthly budgets require an expense category."
+
+
 class ResourceInUse(DomainError):
     code = "resource_in_use"
     status_code = 409

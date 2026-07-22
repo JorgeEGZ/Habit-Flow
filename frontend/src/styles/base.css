@@ -3140,6 +3140,50 @@ svg {
   font-size: 0.9rem;
 }
 
+.finance-budget-panel {
+  align-content: start;
+}
+
+.finance-budget-month {
+  display: grid;
+  width: min(100%, 11rem);
+  gap: 0.4rem;
+}
+
+.finance-budget-month > span {
+  color: var(--app-text-muted);
+  font-size: 0.84rem;
+}
+
+.finance-budget-panel__error {
+  margin: 0;
+  color: var(--app-danger);
+}
+
+.finance-budget-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.finance-budget-summary > div {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: rgba(22, 33, 48, 0.42);
+}
+
+.finance-budget-summary span {
+  color: var(--app-text-muted);
+  font-size: 0.82rem;
+}
+
+.finance-budget-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .finance-data-table {
   display: grid;
   gap: 0.35rem;
@@ -3163,6 +3207,11 @@ svg {
   grid-template-columns: minmax(8.5rem, 1.35fr) minmax(5.5rem, 0.9fr) minmax(5.5rem, 0.9fr) 6rem 6rem 7.5rem 12.5rem;
 }
 
+.finance-data-table--budgets .finance-data-table__head,
+.finance-data-table--budgets .finance-data-row {
+  grid-template-columns: minmax(9rem, 1.35fr) minmax(7rem, 0.9fr) minmax(7rem, 0.9fr) minmax(7rem, 0.9fr) minmax(7rem, 1fr) minmax(7.5rem, 1fr) 6rem;
+}
+
 .finance-data-table__head {
   padding: 0.2rem 0.95rem 0.45rem;
   color: var(--app-text-muted);
@@ -3174,7 +3223,12 @@ svg {
 
 .finance-data-table--transactions .finance-data-table__head > :nth-child(5),
 .finance-data-table--recurring .finance-data-table__head > :nth-child(6),
-.finance-data-table--recurring .finance-data-table__head > :nth-child(7) {
+.finance-data-table--recurring .finance-data-table__head > :nth-child(7),
+.finance-data-table--budgets .finance-data-table__head > :nth-child(2),
+.finance-data-table--budgets .finance-data-table__head > :nth-child(3),
+.finance-data-table--budgets .finance-data-table__head > :nth-child(4),
+.finance-data-table--budgets .finance-data-table__head > :nth-child(5),
+.finance-data-table--budgets .finance-data-table__head > :nth-child(7) {
   text-align: right;
 }
 
@@ -3273,6 +3327,76 @@ svg {
 
 .finance-data-row__actions .p-button .p-button-label:empty {
   display: none;
+}
+
+.finance-budget-usage {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.finance-budget-usage > strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-budget-usage__bar {
+  height: 0.45rem;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: rgba(17, 24, 36, 0.9);
+}
+
+.finance-budget-usage__bar > span {
+  display: block;
+  min-width: 0.2rem;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--app-accent);
+}
+
+.finance-budget-status {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 1.9rem;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.finance-budget-status--active {
+  border-color: rgba(68, 157, 114, 0.42);
+  background: rgba(68, 157, 114, 0.14);
+  color: var(--app-success);
+}
+
+.finance-budget-status--warning {
+  border-color: rgba(213, 157, 63, 0.42);
+  background: rgba(213, 157, 63, 0.14);
+  color: var(--app-warning);
+}
+
+.finance-budget-status--danger {
+  border-color: rgba(205, 105, 105, 0.46);
+  background: rgba(205, 105, 105, 0.14);
+  color: var(--app-danger);
+}
+
+.finance-budget-usage__bar > .finance-budget-progress--active {
+  background: var(--app-accent);
+}
+
+.finance-budget-usage__bar > .finance-budget-progress--warning {
+  background: var(--app-warning);
+}
+
+.finance-budget-usage__bar > .finance-budget-progress--danger {
+  background: var(--app-danger);
 }
 
 .finance-configuration {
@@ -3409,6 +3533,41 @@ svg {
 }
 
 @media (max-width: 900px) {
+  .finance-data-table--budgets .finance-data-table__head {
+    display: none;
+  }
+
+  .finance-data-table--budgets .finance-data-row {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.9rem 1.25rem;
+  }
+
+  .finance-data-table--budgets .finance-data-cell > span:not(.finance-budget-status) {
+    display: block;
+    margin-bottom: 0.2rem;
+  }
+
+  .finance-data-table--budgets .finance-data-cell--primary,
+  .finance-data-table--budgets .finance-data-row__actions {
+    grid-column: 1 / -1;
+  }
+
+  .finance-data-table--budgets .finance-data-cell--amount,
+  .finance-data-table--budgets .finance-budget-usage {
+    text-align: left;
+  }
+
+  .finance-data-table--budgets .finance-budget-usage > strong {
+    text-align: left;
+  }
+
+  .finance-data-table--budgets .finance-data-row__actions {
+    justify-self: start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
   .finance-data-table--recurring .finance-data-table__head {
     display: none;
   }
@@ -3464,11 +3623,22 @@ svg {
   }
 
   .finance-kpis,
+  .finance-budget-summary,
   .finance-toolbar__filters,
   .finance-configuration,
   .finance-data-table--transactions .finance-data-row,
-  .finance-data-table--recurring .finance-data-row {
+  .finance-data-table--recurring .finance-data-row,
+  .finance-data-table--budgets .finance-data-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .finance-budget-month {
+    width: 100%;
+  }
+
+  .finance-data-table--budgets .finance-data-cell--amount,
+  .finance-data-table--budgets .finance-budget-usage {
+    grid-column: auto;
   }
 
   .finance-data-table--recurring .finance-data-cell--amount {

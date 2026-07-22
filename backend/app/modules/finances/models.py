@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -95,6 +96,39 @@ class Category(UUIDPrimaryKeyMixin, TimestampedMixin, Base):
         ),
         Index("ix_categories_user_id", "user_id"),
         Index("ix_categories_user_id_type", "user_id", "type"),
+    )
+
+
+class MonthlyCategoryBudget(UUIDPrimaryKeyMixin, TimestampedMixin, Base):
+    __tablename__ = "monthly_category_budgets"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    month_start: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_monthly_category_budgets_amount_positive"),
+        CheckConstraint(
+            func.extract("day", month_start) == 1,
+            name="ck_monthly_category_budgets_month_first_day",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "category_id",
+            "month_start",
+            name="uq_monthly_category_budgets_user_category_month",
+        ),
+        Index("ix_monthly_category_budgets_user_month", "user_id", "month_start"),
+        Index("ix_monthly_category_budgets_category_id", "category_id"),
     )
 
 

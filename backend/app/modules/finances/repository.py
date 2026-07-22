@@ -11,6 +11,7 @@ from app.modules.finances.models import (
     ENTRY_INCOME,
     Account,
     Category,
+    MonthlyCategoryBudget,
     RecurringTransaction,
     Transaction,
 )
@@ -226,6 +227,92 @@ async def count_recurring_for_category(
     stmt = select(func.count()).select_from(RecurringTransaction).where(
         RecurringTransaction.category_id == category_id,
         RecurringTransaction.user_id == user_id,
+    )
+    result = await session.execute(stmt)
+    return int(result.scalar_one() or 0)
+
+
+# ---------- Monthly budgets ----------
+
+async def get_monthly_budget_by_id_and_user(
+    session: AsyncSession,
+    *,
+    budget_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> MonthlyCategoryBudget | None:
+    stmt = select(MonthlyCategoryBudget).where(
+        MonthlyCategoryBudget.id == budget_id,
+        MonthlyCategoryBudget.user_id == user_id,
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def list_monthly_budgets_for_user_month(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    month_start: date,
+) -> list[tuple[MonthlyCategoryBudget, str]]:
+    stmt = (
+        select(MonthlyCategoryBudget, Category.name)
+        .join(Category, Category.id == MonthlyCategoryBudget.category_id)
+        .where(
+            MonthlyCategoryBudget.user_id == user_id,
+            MonthlyCategoryBudget.month_start == month_start,
+        )
+        .order_by(Category.name.asc(), Category.id.asc())
+    )
+    result = await session.execute(stmt)
+    return [(row[0], row[1]) for row in result.all()]
+
+
+async def create_monthly_budget(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    category_id: uuid.UUID,
+    month_start: date,
+    amount: int,
+) -> MonthlyCategoryBudget:
+    record = MonthlyCategoryBudget(
+        user_id=user_id,
+        category_id=category_id,
+        month_start=month_start,
+        amount=amount,
+    )
+    session.add(record)
+    await session.commit()
+    await session.refresh(record)
+    return record
+
+
+async def update_monthly_budget(
+    session: AsyncSession,
+    budget: MonthlyCategoryBudget,
+    *,
+    amount: int,
+) -> MonthlyCategoryBudget:
+    budget.amount = amount
+    await session.commit()
+    await session.refresh(budget)
+    return budget
+
+
+async def delete_monthly_budget(session: AsyncSession, budget: MonthlyCategoryBudget) -> None:
+    await session.delete(budget)
+    await session.commit()
+
+
+async def count_monthly_budgets_for_category(
+    session: AsyncSession,
+    *,
+    category_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> int:
+    stmt = select(func.count()).select_from(MonthlyCategoryBudget).where(
+        MonthlyCategoryBudget.category_id == category_id,
+        MonthlyCategoryBudget.user_id == user_id,
     )
     result = await session.execute(stmt)
     return int(result.scalar_one() or 0)

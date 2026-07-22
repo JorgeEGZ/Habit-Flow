@@ -50,6 +50,27 @@ export async function getSpendingByCategory(month) {
   return data
 }
 
+export async function getMonthlyBudgets(month) {
+  const { data } = await api.get('/finances/budgets', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
+export async function createMonthlyBudget(payload) {
+  const { data } = await api.post('/finances/budgets', payload)
+  return data
+}
+
+export async function updateMonthlyBudget(budgetId, payload) {
+  const { data } = await api.patch(`/finances/budgets/${budgetId}`, payload)
+  return data
+}
+
+export async function deleteMonthlyBudget(budgetId) {
+  await api.delete(`/finances/budgets/${budgetId}`)
+}
+
 export async function getUpcomingRecurring(days = 30) {
   const normalizedDays = Number(days)
   const windowDays = normalizedDays === 7 || normalizedDays === 30 ? normalizedDays : 30

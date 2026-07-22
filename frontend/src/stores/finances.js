@@ -13,11 +13,14 @@ export const useFinancesStore = defineStore('finances', {
     loadingTransactions: false,
     loadingRecurring: false,
     loadingSpendingByCategory: false,
+    loadingMonthlyBudgets: false,
     loadingUpcomingRecurring: false,
     submitting: false,
     error: '',
     spendingByCategory: null,
     spendingByCategoryError: '',
+    monthlyBudgets: null,
+    monthlyBudgetsError: '',
     upcomingRecurring: null,
     upcomingRecurringError: '',
   }),
@@ -80,6 +83,22 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.loadingSpendingByCategory = false
+      }
+    },
+
+    async fetchMonthlyBudgets(month) {
+      this.loadingMonthlyBudgets = true
+      this.monthlyBudgetsError = ''
+      this.monthlyBudgets = null
+
+      try {
+        this.monthlyBudgets = await financesService.getMonthlyBudgets(month)
+        return this.monthlyBudgets
+      } catch (error) {
+        this.monthlyBudgetsError = 'No fue posible cargar los presupuestos.'
+        throw error
+      } finally {
+        this.loadingMonthlyBudgets = false
       }
     },
 
@@ -217,6 +236,50 @@ export const useFinancesStore = defineStore('finances', {
       }
     },
 
+    async createMonthlyBudget(payload) {
+      this.submitting = true
+      this.error = ''
+      try {
+        const budget = await financesService.createMonthlyBudget(payload)
+        await this.fetchMonthlyBudgets(payload.month)
+        return budget
+      } catch (error) {
+        this.error = monthlyBudgetErrorMessage(error, 'No fue posible guardar el presupuesto.')
+        throw new Error(this.error)
+      } finally {
+        this.submitting = false
+      }
+    },
+
+    async updateMonthlyBudget(budgetId, payload, month) {
+      this.submitting = true
+      this.error = ''
+      try {
+        const budget = await financesService.updateMonthlyBudget(budgetId, payload)
+        await this.fetchMonthlyBudgets(month)
+        return budget
+      } catch (error) {
+        this.error = monthlyBudgetErrorMessage(error, 'No fue posible guardar el presupuesto.')
+        throw new Error(this.error)
+      } finally {
+        this.submitting = false
+      }
+    },
+
+    async deleteMonthlyBudget(budgetId, month) {
+      this.submitting = true
+      this.error = ''
+      try {
+        await financesService.deleteMonthlyBudget(budgetId)
+        await this.fetchMonthlyBudgets(month)
+      } catch (error) {
+        this.error = monthlyBudgetErrorMessage(error, 'No fue posible eliminar el presupuesto.')
+        throw new Error(this.error)
+      } finally {
+        this.submitting = false
+      }
+    },
+
     async updateTransaction(transactionId, payload) {
       this.submitting = true
       this.error = ''
@@ -291,3 +354,14 @@ export const useFinancesStore = defineStore('finances', {
     },
   },
 })
+
+function monthlyBudgetErrorMessage(error, fallback) {
+  const code = error?.response?.data?.error?.code
+  const messages = {
+    monthly_budget_already_exists: 'Ya existe un presupuesto para esta categoría en este mes.',
+    budget_requires_expense_category: 'Solo puedes crear presupuestos para categorías de gasto.',
+    monthly_budget_not_found: 'El presupuesto no existe o ya fue eliminado.',
+  }
+
+  return messages[code] ?? fallback
+}

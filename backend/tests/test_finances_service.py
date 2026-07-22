@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
     AccountNotFound,
+    BudgetRequiresExpenseCategory,
     CategoryNotFound,
+    MonthlyBudgetAlreadyExists,
     RecurringTransactionNotFound,
     ResourceInUse,
     TransactionNotFound,
@@ -21,6 +23,8 @@ from app.modules.finances.schemas import (
     AccountUpdate,
     CategoryCreate,
     CategoryUpdate,
+    MonthlyCategoryBudgetCreate,
+    MonthlyCategoryBudgetUpdate,
     RecurringTransactionCreate,
     RecurringTransactionUpdate,
     TransactionCreate,
@@ -191,6 +195,205 @@ async def test_spending_by_category_aggregates_monthly_expenses(session: AsyncSe
         today=date(2026, 7, 20),
     )
     assert default_month_summary.month == "2026-07"
+
+
+async def test_monthly_budgets_aggregate_real_expenses_and_enforce_category_rules(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "budget-owner@example.com")
+    user_id = user.id
+    other_user = await _make_user(session, "budget-other@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    other_account = await finances_service.create_account(
+        session,
+        user_id=other_user.id,
+        payload=AccountCreate(name="Other cash", type="cash", initial_balance=0),
+    )
+    food = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Food", type="expense")
+    )
+    food_id = food.id
+    transport = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Transport", type="expense")
+    )
+    transport_id = transport.id
+    leisure = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Leisure", type="expense")
+    )
+    leisure_id = leisure.id
+    salary = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Salary", type="income")
+    )
+    salary_id = salary.id
+    other_food = await finances_service.create_category(
+        session, user_id=other_user.id, payload=CategoryCreate(name="Other food", type="expense")
+    )
+
+    for category_id, entry_type, amount, transaction_date in [
+        (food.id, "expense", 300, date(2026, 7, 1)),
+        (food.id, "expense", 250, date(2026, 7, 31)),
+        (transport.id, "expense", 100, date(2026, 7, 15)),
+        (food.id, "expense", 999, date(2026, 8, 1)),
+        (salary.id, "income", 1000, date(2026, 7, 15)),
+    ]:
+        await finances_service.create_transaction(
+            session,
+            user_id=user.id,
+            payload=TransactionCreate(
+                account_id=account.id,
+                category_id=category_id,
+                type=entry_type,
+                amount=amount,
+                description=None,
+                transaction_date=transaction_date,
+            ),
+        )
+    await finances_service.create_transaction(
+        session,
+        user_id=other_user.id,
+        payload=TransactionCreate(
+            account_id=other_account.id,
+            category_id=other_food.id,
+            type="expense",
+            amount=900,
+            description=None,
+            transaction_date=date(2026, 7, 15),
+        ),
+    )
+
+    food_budget = await finances_service.create_monthly_budget(
+        session,
+        user_id=user.id,
+        payload=MonthlyCategoryBudgetCreate(category_id=food.id, month="2026-07", amount=500),
+    )
+    food_budget_id = food_budget.id
+    await finances_service.create_monthly_budget(
+        session,
+        user_id=user.id,
+        payload=MonthlyCategoryBudgetCreate(category_id=transport.id, month="2026-07", amount=200),
+    )
+    await finances_service.create_monthly_budget(
+        session,
+        user_id=user.id,
+        payload=MonthlyCategoryBudgetCreate(category_id=leisure_id, month="2026-07", amount=75),
+    )
+
+    summary = await finances_service.get_monthly_budgets(
+        session, user_id=user.id, month="2026-07"
+    )
+
+    assert summary.month == "2026-07"
+    assert summary.period_start == date(2026, 7, 1)
+    assert summary.period_end == date(2026, 7, 31)
+    assert summary.total_budget_amount == 775
+    assert summary.total_spent_amount == 650
+    assert summary.total_remaining_amount == 175
+    assert summary.total_over_budget_amount == 50
+    assert [item.category_name for item in summary.budgets] == ["Food", "Transport", "Leisure"]
+    assert summary.budgets[0].spent_amount == 550
+    assert summary.budgets[0].remaining_amount == 0
+    assert summary.budgets[0].over_budget_amount == 50
+    assert summary.budgets[0].usage_percentage == 110.0
+    assert summary.budgets[0].exceeded is True
+    assert summary.budgets[1].remaining_amount == 100
+    assert summary.budgets[1].exceeded is False
+    assert summary.budgets[2].spent_amount == 0
+    assert summary.budgets[2].remaining_amount == 75
+
+    with pytest.raises(MonthlyBudgetAlreadyExists):
+        await finances_service.create_monthly_budget(
+            session,
+            user_id=user.id,
+            payload=MonthlyCategoryBudgetCreate(category_id=food.id, month="2026-07", amount=600),
+        )
+    with pytest.raises(BudgetRequiresExpenseCategory):
+        await finances_service.create_monthly_budget(
+            session,
+            user_id=user_id,
+            payload=MonthlyCategoryBudgetCreate(category_id=salary_id, month="2026-07", amount=600),
+        )
+
+    updated = await finances_service.update_monthly_budget(
+        session,
+        user_id=user_id,
+        budget_id=food_budget_id,
+        payload=MonthlyCategoryBudgetUpdate(amount=550),
+    )
+    assert updated.amount == 550
+    updated_summary = await finances_service.get_monthly_budgets(
+        session, user_id=user_id, month="2026-07"
+    )
+    assert updated_summary.budgets[0].exceeded is False
+    assert updated_summary.budgets[0].usage_percentage == 100.0
+
+    with pytest.raises(ResourceInUse):
+        await finances_service.update_category(
+            session,
+            user_id=user_id,
+            category_id=food_id,
+            payload=CategoryUpdate(type="income"),
+        )
+    with pytest.raises(ResourceInUse):
+        await finances_service.update_category(
+            session,
+            user_id=user_id,
+            category_id=leisure_id,
+            payload=CategoryUpdate(type="income"),
+        )
+    with pytest.raises(ResourceInUse):
+        await finances_service.delete_category(session, user_id=user_id, category_id=leisure_id)
+
+    await finances_service.delete_monthly_budget(
+        session, user_id=user_id, budget_id=food_budget_id
+    )
+    assert len(
+        (await finances_service.get_monthly_budgets(session, user_id=user_id, month="2026-07")).budgets
+    ) == 2
+
+
+async def test_monthly_budget_actual_spending_updates_with_transaction_changes(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "budget-transaction-updates@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    category = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Food", type="expense")
+    )
+    await finances_service.create_monthly_budget(
+        session,
+        user_id=user.id,
+        payload=MonthlyCategoryBudgetCreate(category_id=category.id, month="2026-07", amount=500),
+    )
+    transaction = await finances_service.create_transaction(
+        session,
+        user_id=user.id,
+        payload=TransactionCreate(
+            account_id=account.id,
+            category_id=category.id,
+            type="expense",
+            amount=200,
+            description=None,
+            transaction_date=date(2026, 7, 10),
+        ),
+    )
+    assert (await finances_service.get_monthly_budgets(session, user_id=user.id, month="2026-07")).budgets[0].spent_amount == 200
+
+    await finances_service.update_transaction(
+        session,
+        user_id=user.id,
+        transaction_id=transaction.id,
+        payload=TransactionUpdate(amount=550),
+    )
+    updated = await finances_service.get_monthly_budgets(session, user_id=user.id, month="2026-07")
+    assert updated.budgets[0].over_budget_amount == 50
+
+    await finances_service.delete_transaction(session, user_id=user.id, transaction_id=transaction.id)
+    deleted = await finances_service.get_monthly_budgets(session, user_id=user.id, month="2026-07")
+    assert deleted.budgets[0].spent_amount == 0
 
 
 @pytest.mark.parametrize(

@@ -39,6 +39,11 @@ async def test_spending_by_category_requires_bearer(client: AsyncClient) -> None
     assert response.status_code == 401
 
 
+async def test_monthly_budgets_require_bearer(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/finances/budgets")
+    assert response.status_code == 401
+
+
 async def test_upcoming_recurring_requires_bearer(client: AsyncClient) -> None:
     response = await client.get("/api/v1/finances/insights/upcoming-recurring")
     assert response.status_code == 401
@@ -132,6 +137,128 @@ async def test_spending_by_category_uses_current_app_month_when_omitted(
         "total_expenses": 0,
         "categories": [],
     }
+
+
+@pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
+async def test_monthly_budgets_reject_invalid_month(client: AsyncClient, month: str) -> None:
+    token = await _register_and_login(client, email=f"invalid-budget-month-{month}@example.com")
+    response = await client.get(
+        "/api/v1/finances/budgets",
+        headers=_auth_headers(token),
+        params={"month": month},
+    )
+    assert response.status_code == 422
+
+
+async def test_monthly_budget_crud_and_validation(client: AsyncClient) -> None:
+    token = await _register_and_login(client, email="budget-routes@example.com")
+    headers = _auth_headers(token)
+    expense = await client.post(
+        "/api/v1/finances/categories",
+        headers=headers,
+        json={"name": "Food", "type": "expense"},
+    )
+    income = await client.post(
+        "/api/v1/finances/categories",
+        headers=headers,
+        json={"name": "Salary", "type": "income"},
+    )
+    expense_id = expense.json()["id"]
+
+    created = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": expense_id, "month": "2026-07", "amount": 500},
+    )
+    assert created.status_code == 201, created.text
+    budget_id = created.json()["id"]
+    assert created.json()["month"] == "2026-07"
+
+    another_month = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": expense_id, "month": "2026-08", "amount": 500},
+    )
+    assert another_month.status_code == 201
+
+    duplicate = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": expense_id, "month": "2026-07", "amount": 600},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "monthly_budget_already_exists"
+
+    invalid_category = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": income.json()["id"], "month": "2026-07", "amount": 500},
+    )
+    assert invalid_category.status_code == 400
+    assert invalid_category.json()["error"]["code"] == "budget_requires_expense_category"
+
+    invalid_fields = await client.patch(
+        f"/api/v1/finances/budgets/{budget_id}",
+        headers=headers,
+        json={"amount": 600, "month": "2026-08"},
+    )
+    assert invalid_fields.status_code == 422
+
+    invalid_create_fields = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": expense_id, "month": "2026-09", "amount": 500, "account_id": "ignored"},
+    )
+    assert invalid_create_fields.status_code == 422
+
+    updated = await client.patch(
+        f"/api/v1/finances/budgets/{budget_id}",
+        headers=headers,
+        json={"amount": 600},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["amount"] == 600
+
+    overview = await client.get(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        params={"month": "2026-07"},
+    )
+    assert overview.status_code == 200
+    assert overview.json()["total_budget_amount"] == 600
+    assert overview.json()["budgets"][0]["spent_amount"] == 0
+
+    deleted = await client.delete(f"/api/v1/finances/budgets/{budget_id}", headers=headers)
+    assert deleted.status_code == 204
+
+
+async def test_monthly_budget_uses_current_month_and_enforces_ownership(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 7, 22))
+    owner_token = await _register_and_login(client, email="budget-owner-route@example.com")
+    other_token = await _register_and_login(client, email="budget-other-route@example.com")
+    owner_headers = _auth_headers(owner_token)
+    category = await client.post(
+        "/api/v1/finances/categories",
+        headers=owner_headers,
+        json={"name": "Food", "type": "expense"},
+    )
+    created = await client.post(
+        "/api/v1/finances/budgets",
+        headers=owner_headers,
+        json={"category_id": category.json()["id"], "month": "2026-07", "amount": 500},
+    )
+    budget_id = created.json()["id"]
+
+    default_month = await client.get("/api/v1/finances/budgets", headers=owner_headers)
+    assert default_month.status_code == 200
+    assert default_month.json()["month"] == "2026-07"
+
+    other_headers = _auth_headers(other_token)
+    assert (await client.patch(f"/api/v1/finances/budgets/{budget_id}", headers=other_headers, json={"amount": 1})).status_code == 404
+    assert (await client.delete(f"/api/v1/finances/budgets/{budget_id}", headers=other_headers)).status_code == 404
 
 
 async def test_account_crud(client: AsyncClient) -> None:
