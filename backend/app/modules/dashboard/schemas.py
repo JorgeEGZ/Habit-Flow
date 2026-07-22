@@ -74,12 +74,38 @@ class DashboardRecentTransaction(BaseModel):
     description: str | None
 
 
+class DashboardTopSpendingCategory(BaseModel):
+    category_id: uuid.UUID
+    category_name: str
+    amount: int = Field(gt=0)
+    transaction_count: int = Field(gt=0)
+    share_percentage: float = Field(ge=0, le=100)
+
+
+class DashboardUpcomingRecurring(BaseModel):
+    period_start: date
+    period_end: date
+    window_days: Literal[30]
+    total_income: int = Field(ge=0)
+    total_expenses: int = Field(ge=0)
+    net: int
+    occurrence_count: int = Field(ge=0)
+
+
+class DashboardFinanceInsights(BaseModel):
+    as_of: date
+    month: str
+    top_spending_category: DashboardTopSpendingCategory | None = None
+    upcoming_recurring: DashboardUpcomingRecurring
+
+
 class DashboardFinances(BaseModel):
     monthly_income: int = Field(ge=0)
     monthly_expenses: int = Field(ge=0)
     monthly_balance: int
     account_balances: list[DashboardAccountBalance]
     recent_transactions: list[DashboardRecentTransaction]
+    insights: DashboardFinanceInsights
 
 
 class DashboardSummary(BaseModel):

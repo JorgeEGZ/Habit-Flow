@@ -1,11 +1,12 @@
 """HTTP integration tests for the dashboard routes."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from httpx import AsyncClient
 
+from app.modules.dashboard import service as dashboard_service
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,8 +74,39 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
             "monthly_balance": 0,
             "account_balances": [],
             "recent_transactions": [],
+            "insights": {
+                "as_of": str(date.today()),
+                "month": date.today().strftime("%Y-%m"),
+                "top_spending_category": None,
+                "upcoming_recurring": {
+                    "period_start": str(date.today()),
+                    "period_end": str(date.today() + timedelta(days=29)),
+                    "window_days": 30,
+                    "total_income": 0,
+                    "total_expenses": 0,
+                    "net": 0,
+                    "occurrence_count": 0,
+                },
+            },
         },
     }
+
+
+async def test_dashboard_finance_insights_use_current_app_date(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(dashboard_service, "current_app_date", lambda: date(2026, 7, 22))
+    token = await _register_and_login(client, email="dash-insights-app-date@example.com")
+
+    response = await client.get("/api/v1/dashboard/finances", headers=_auth_headers(token))
+
+    assert response.status_code == 200
+    insights = response.json()["insights"]
+    assert insights["as_of"] == "2026-07-22"
+    assert insights["month"] == "2026-07"
+    assert insights["upcoming_recurring"]["period_start"] == "2026-07-22"
+    assert insights["upcoming_recurring"]["period_end"] == "2026-08-20"
 
 
 async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:

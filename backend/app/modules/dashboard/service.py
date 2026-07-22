@@ -8,6 +8,7 @@ from app.core.config import get_app_timezone, get_settings
 from app.modules.dashboard import repository as dashboard_repo
 from app.modules.dashboard.schemas import (
     DashboardAccountBalance,
+    DashboardFinanceInsights,
     DashboardFinances,
     DashboardGoalSummary,
     DashboardHabits,
@@ -16,7 +17,10 @@ from app.modules.dashboard.schemas import (
     DashboardSavingsProgress,
     DashboardStreakSummary,
     DashboardSummary,
+    DashboardTopSpendingCategory,
+    DashboardUpcomingRecurring,
 )
+from app.modules.finances import service as finances_service
 from app.modules.habits import service as habits_service
 from app.modules.habits.models import FREQUENCY_DAILY, FREQUENCY_WEEKLY, TRACKING_BOOLEAN
 from app.modules.savings.models import STATUS_ACTIVE, STATUS_COMPLETED
@@ -242,6 +246,18 @@ async def get_finances(
         user_id=user_id,
         limit=RECENT_TRANSACTIONS_LIMIT,
     )
+    spending = await finances_service.get_spending_by_category(
+        session,
+        user_id=user_id,
+        month=today.strftime("%Y-%m"),
+        today=today,
+    )
+    upcoming = await finances_service.get_upcoming_recurring(
+        session,
+        user_id=user_id,
+        days=30,
+        today=today,
+    )
 
     account_balances = [
         DashboardAccountBalance(
@@ -266,6 +282,33 @@ async def get_finances(
         )
         for transaction, account_name, category_name in recent_rows
     ]
+    top_category = spending.categories[0] if spending.categories else None
+    insights = DashboardFinanceInsights(
+        as_of=today,
+        month=spending.month,
+        top_spending_category=(
+            DashboardTopSpendingCategory(
+                category_id=top_category.category_id,
+                category_name=top_category.category_name,
+                amount=top_category.amount,
+                transaction_count=top_category.transaction_count,
+                share_percentage=top_category.share_percentage,
+            )
+            if top_category
+            else None
+        ),
+        upcoming_recurring=DashboardUpcomingRecurring(
+            period_start=upcoming.period_start,
+            period_end=upcoming.period_end,
+            window_days=30,
+            total_income=upcoming.total_income,
+            total_expenses=upcoming.total_expenses,
+            net=upcoming.net,
+            occurrence_count=sum(
+                len(group.occurrences) for group in upcoming.date_groups
+            ),
+        ),
+    )
 
     return DashboardFinances(
         monthly_income=monthly_income,
@@ -273,6 +316,7 @@ async def get_finances(
         monthly_balance=monthly_income - monthly_expenses,
         account_balances=account_balances,
         recent_transactions=recent_transactions,
+        insights=insights,
     )
 
 

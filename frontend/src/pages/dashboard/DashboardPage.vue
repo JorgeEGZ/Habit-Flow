@@ -137,6 +137,60 @@
         </Card>
       </section>
 
+      <section class="dashboard-columns dashboard-columns--finance-insights" aria-label="Información financiera">
+        <Card class="dashboard-panel dashboard-finance-insight">
+          <template #content>
+            <header class="dashboard-panel__header">
+              <div>
+                <p class="dashboard-panel__eyebrow">Finanzas</p>
+                <h2>Mayor gasto del mes</h2>
+              </div>
+              <RouterLink :to="{ name: 'finances-movements' }" class="dashboard-panel__action">
+                Ver gastos por categoría
+              </RouterLink>
+            </header>
+
+            <div v-if="summary.finances.insights.top_spending_category" class="dashboard-finance-insight__content">
+              <strong class="dashboard-finance-insight__title">{{ summary.finances.insights.top_spending_category.category_name }}</strong>
+              <strong class="dashboard-finance-insight__amount dashboard-kpi__expense">
+                {{ formatCurrencyCop(summary.finances.insights.top_spending_category.amount) }}
+              </strong>
+              <p>
+                {{ formatPercentage(summary.finances.insights.top_spending_category.share_percentage) }} de tus gastos ·
+                {{ movementCountLabel(summary.finances.insights.top_spending_category.transaction_count) }}
+              </p>
+            </div>
+            <div v-else class="dashboard-empty">
+              <span>Aún no hay gastos registrados este mes.</span>
+              <RouterLink :to="{ name: 'finances-movements' }" class="dashboard-empty__action">Ver movimientos</RouterLink>
+            </div>
+          </template>
+        </Card>
+
+        <Card class="dashboard-panel dashboard-finance-insight">
+          <template #content>
+            <header class="dashboard-panel__header">
+              <div>
+                <p class="dashboard-panel__eyebrow">Finanzas</p>
+                <h2>Próximos 30 días</h2>
+              </div>
+              <RouterLink :to="{ name: 'finances-recurring' }" class="dashboard-panel__action">Ver recurrentes</RouterLink>
+            </header>
+
+            <div v-if="summary.finances.insights.upcoming_recurring.occurrence_count" class="dashboard-finance-insight__projection">
+              <div><span>Ingresos esperados</span><strong class="dashboard-kpi__income">{{ formatCurrencyCop(summary.finances.insights.upcoming_recurring.total_income) }}</strong></div>
+              <div><span>Gastos previstos</span><strong class="dashboard-kpi__expense">{{ formatCurrencyCop(summary.finances.insights.upcoming_recurring.total_expenses) }}</strong></div>
+              <div><span>Balance previsto</span><strong :class="balanceClass(summary.finances.insights.upcoming_recurring.net)">{{ formatSignedCurrency(summary.finances.insights.upcoming_recurring.net) }}</strong></div>
+              <p>{{ occurrenceCountLabel(summary.finances.insights.upcoming_recurring.occurrence_count) }}. Proyección basada en reglas recurrentes. No crea movimientos automáticamente.</p>
+            </div>
+            <div v-else class="dashboard-empty">
+              <span>No hay reglas activas con ocurrencias en los próximos 30 días.</span>
+              <RouterLink :to="{ name: 'finances-recurring' }" class="dashboard-empty__action">Ver recurrentes</RouterLink>
+            </div>
+          </template>
+        </Card>
+      </section>
+
       <section class="dashboard-columns">
         <Card class="dashboard-panel">
           <template #content>
@@ -231,13 +285,35 @@ const emptySummary = {
     monthly_balance: 0,
     account_balances: [],
     recent_transactions: [],
+    insights: {
+      as_of: '',
+      month: '',
+      top_spending_category: null,
+      upcoming_recurring: {
+        period_start: '',
+        period_end: '',
+        window_days: 30,
+        total_income: 0,
+        total_expenses: 0,
+        net: 0,
+        occurrence_count: 0,
+      },
+    },
   },
 }
 
 const summary = computed(() => dashboardStore.summary ?? emptySummary)
 
 function formatPercentage(value) {
-  return `${value ?? 0}%`
+  return `${Number(value ?? 0).toFixed(2)}%`
+}
+
+function movementCountLabel(count) {
+  return `${count} ${count === 1 ? 'movimiento' : 'movimientos'}`
+}
+
+function occurrenceCountLabel(count) {
+  return `${count} ${count === 1 ? 'movimiento previsto' : 'movimientos previstos'}`
 }
 
 function formatSignedCurrency(value) {

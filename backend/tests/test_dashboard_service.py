@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.modules.dashboard import service as dashboard_service
 from app.modules.finances import service as finances_service
-from app.modules.finances.schemas import AccountCreate, CategoryCreate, TransactionCreate
+from app.modules.finances.schemas import (
+    AccountCreate,
+    CategoryCreate,
+    RecurringTransactionCreate,
+    TransactionCreate,
+)
 from app.modules.habits import service as habits_service
 from app.modules.habits.schemas import HabitCreate, HabitLogIn, HabitLogNumericIn
 from app.modules.savings import service as savings_service
@@ -52,6 +57,13 @@ async def test_empty_dashboard_state(session: AsyncSession) -> None:
     assert summary.finances.monthly_balance == 0
     assert summary.finances.account_balances == []
     assert summary.finances.recent_transactions == []
+    assert summary.finances.insights.as_of == TODAY
+    assert summary.finances.insights.month == "2026-06"
+    assert summary.finances.insights.top_spending_category is None
+    assert summary.finances.insights.upcoming_recurring.total_income == 0
+    assert summary.finances.insights.upcoming_recurring.total_expenses == 0
+    assert summary.finances.insights.upcoming_recurring.net == 0
+    assert summary.finances.insights.upcoming_recurring.occurrence_count == 0
     assert habits == summary.habits
     assert savings == summary.savings
     assert finances == summary.finances
@@ -285,6 +297,37 @@ async def test_finance_dashboard_metrics(session: AsyncSession) -> None:
             ),
         )
 
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(
+            account_id=account_one.id,
+            category_id=expense_category.id,
+            type="expense",
+            amount=60,
+            description="Subscription",
+            frequency="monthly",
+            start_date=date(2026, 1, 17),
+            end_date=None,
+            is_active=True,
+        ),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(
+            account_id=account_two.id,
+            category_id=income_category.id,
+            type="income",
+            amount=40,
+            description="Allowance",
+            frequency="weekly",
+            start_date=date(2026, 6, 10),
+            end_date=None,
+            is_active=True,
+        ),
+    )
+
     finances = await dashboard_service.get_finances(session, user_id=user.id, today=TODAY)
 
     assert finances.monthly_income == 820
@@ -301,6 +344,17 @@ async def test_finance_dashboard_metrics(session: AsyncSession) -> None:
         date(2026, 6, 14),
         date(2026, 6, 13),
     ]
+    assert finances.insights.as_of == TODAY
+    assert finances.insights.month == "2026-06"
+    assert finances.insights.top_spending_category is not None
+    assert finances.insights.top_spending_category.category_name == "Food"
+    assert finances.insights.top_spending_category.amount == 310
+    assert finances.insights.top_spending_category.transaction_count == 3
+    assert finances.insights.top_spending_category.share_percentage == 100
+    assert finances.insights.upcoming_recurring.total_income == 200
+    assert finances.insights.upcoming_recurring.total_expenses == 60
+    assert finances.insights.upcoming_recurring.net == 140
+    assert finances.insights.upcoming_recurring.occurrence_count == 6
 
 
 async def test_finance_dashboard_month_boundary(session: AsyncSession) -> None:
@@ -423,4 +477,6 @@ async def test_dashboard_aggregate_paths_are_user_scoped(session: AsyncSession) 
     assert summary.savings.total_savings_contributed == 0
     assert summary.finances.monthly_income == 0
     assert summary.finances.account_balances == []
+    assert summary.finances.insights.top_spending_category is None
+    assert summary.finances.insights.upcoming_recurring.occurrence_count == 0
     assert finances.account_balances == []
