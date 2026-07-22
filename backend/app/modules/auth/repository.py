@@ -52,11 +52,17 @@ async def revoke(session: AsyncSession, record: RefreshToken) -> None:
     await session.commit()
 
 
-async def revoke_all_for_user(session: AsyncSession, user_id: uuid.UUID) -> None:
+async def revoke_all_for_user(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    commit: bool = True,
+) -> None:
     stmt = (
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
         .values(revoked_at=datetime.now(timezone.utc))
     )
     await session.execute(stmt)
-    await session.commit()
+    if commit:
+        await session.commit()

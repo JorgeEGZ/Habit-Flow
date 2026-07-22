@@ -27,6 +27,18 @@ class InvalidCredentials(DomainError):
     message = "Invalid credentials."
 
 
+class InvalidCurrentPassword(DomainError):
+    code = "invalid_current_password"
+    status_code = 400
+    message = "Current password is incorrect."
+
+
+class PasswordMustDiffer(DomainError):
+    code = "password_must_differ"
+    status_code = 400
+    message = "New password must differ from the current password."
+
+
 class InvalidRefreshToken(DomainError):
     code = "invalid_refresh_token"
     status_code = 401

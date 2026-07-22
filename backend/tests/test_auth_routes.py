@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.security import verify_password
+from app.modules.auth.models import RefreshToken
+from app.modules.users.models import User
 
 
 pytestmark = pytest.mark.asyncio
@@ -13,6 +18,26 @@ AUTH_HEADERS = {
     "Origin": get_settings().cors_origins[0],
     get_settings().csrf_header_name: get_settings().csrf_header_value,
 }
+
+
+async def _register_and_login(
+    client: AsyncClient,
+    *,
+    email: str,
+    password: str = "correcthorse",
+    full_name: str | None = None,
+) -> str:
+    await client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password, "full_name": full_name},
+    )
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["access_token"]
 
 
 async def test_register_returns_201_with_user_payload(client: AsyncClient) -> None:
@@ -252,3 +277,225 @@ async def test_users_me_returns_authenticated_user(client: AsyncClient) -> None:
     body = response.json()
     assert body["email"] == "me@example.com"
     assert body["full_name"] == "Me Myself"
+
+
+async def test_update_me_trims_and_clears_full_name(client: AsyncClient) -> None:
+    token = await _register_and_login(
+        client,
+        email="profile@example.com",
+        full_name="Original Name",
+    )
+    headers = {"authorization": f"Bearer {token}"}
+
+    updated = await client.patch(
+        "/api/v1/users/me",
+        headers=headers,
+        json={"full_name": "  Updated Name  "},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["full_name"] == "Updated Name"
+    assert updated.json()["email"] == "profile@example.com"
+
+    cleared = await client.patch(
+        "/api/v1/users/me",
+        headers=headers,
+        json={"full_name": "   "},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["full_name"] is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"email": "changed@example.com"},
+        {"unknown_field": "value"},
+    ],
+)
+async def test_update_me_rejects_email_and_unknown_fields(
+    client: AsyncClient,
+    payload: dict[str, str],
+) -> None:
+    token = await _register_and_login(
+        client,
+        email=f"profile-reject-{next(iter(payload))}@example.com",
+    )
+    response = await client.patch(
+        "/api/v1/users/me",
+        headers={"authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_password_update_requires_bearer(client: AsyncClient) -> None:
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        json={
+            "current_password": "correcthorse",
+            "new_password": "newcorrecthorse",
+        },
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_required"
+
+
+@pytest.mark.parametrize(
+    ("case_name", "payload"),
+    [
+        (
+            "current-too-short",
+            {"current_password": "short", "new_password": "newcorrecthorse"},
+        ),
+        (
+            "current-too-long",
+            {"current_password": "x" * 129, "new_password": "newcorrecthorse"},
+        ),
+        (
+            "new-too-short",
+            {"current_password": "correcthorse", "new_password": "short"},
+        ),
+        (
+            "new-too-long",
+            {"current_password": "correcthorse", "new_password": "x" * 129},
+        ),
+    ],
+)
+async def test_password_update_validates_password_length(
+    client: AsyncClient,
+    case_name: str,
+    payload: dict[str, str],
+) -> None:
+    token = await _register_and_login(
+        client,
+        email=f"password-length-{case_name}@example.com",
+    )
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        headers={"authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"current_password": "correcthorse"},
+        {"new_password": "newcorrecthorse"},
+        {},
+    ],
+)
+async def test_password_update_requires_both_password_fields(
+    client: AsyncClient,
+    payload: dict[str, str],
+) -> None:
+    token = await _register_and_login(
+        client,
+        email=f"password-required-{len(payload)}-{next(iter(payload), 'none')}@example.com",
+    )
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        headers={"authorization": f"Bearer {token}"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_password_update_rejects_wrong_current_password_without_changes(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    email = "password-wrong@example.com"
+    token = await _register_and_login(client, email=email)
+    user = (await session.execute(select(User).where(User.email == email))).scalar_one()
+    original_hash = user.password_hash
+
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        headers={"authorization": f"Bearer {token}"},
+        json={
+            "current_password": "wrongpassword",
+            "new_password": "newcorrecthorse",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_current_password"
+    await session.refresh(user)
+    assert user.password_hash == original_hash
+    tokens = (
+        await session.execute(
+            select(RefreshToken).where(RefreshToken.user_id == user.id)
+        )
+    ).scalars().all()
+    assert tokens
+    assert all(record.revoked_at is None for record in tokens)
+
+
+async def test_password_update_rejects_same_password(client: AsyncClient) -> None:
+    token = await _register_and_login(client, email="password-same@example.com")
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        headers={"authorization": f"Bearer {token}"},
+        json={
+            "current_password": "correcthorse",
+            "new_password": "correcthorse",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "password_must_differ"
+
+
+async def test_password_update_changes_login_and_revokes_all_refresh_tokens(
+    client: AsyncClient,
+    session: AsyncSession,
+) -> None:
+    email = "password-success@example.com"
+    token = await _register_and_login(client, email=email)
+    second_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "correcthorse"},
+        headers=AUTH_HEADERS,
+    )
+    assert second_login.status_code == 200
+
+    response = await client.patch(
+        "/api/v1/users/me/password",
+        headers={"authorization": f"Bearer {token}"},
+        json={
+            "current_password": "correcthorse",
+            "new_password": "newcorrecthorse",
+        },
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    user = (await session.execute(select(User).where(User.email == email))).scalar_one()
+    await session.refresh(user)
+    assert verify_password("newcorrecthorse", user.password_hash)
+    assert not verify_password("correcthorse", user.password_hash)
+    tokens = (
+        await session.execute(
+            select(RefreshToken).where(RefreshToken.user_id == user.id)
+        )
+    ).scalars().all()
+    assert len(tokens) == 2
+    assert all(record.revoked_at is not None for record in tokens)
+
+    old_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "correcthorse"},
+        headers=AUTH_HEADERS,
+    )
+    new_login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": "newcorrecthorse"},
+        headers=AUTH_HEADERS,
+    )
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
