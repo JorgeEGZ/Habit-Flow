@@ -918,14 +918,28 @@ function recurringStatusClass(isActive) {
   }
 }
 
+const recurringMonthAbbreviations = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+function formatRecurringDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? '')
+
+  if (!match) {
+    return '-'
+  }
+
+  const [, year, month, day] = match
+  const monthLabel = recurringMonthAbbreviations[Number(month) - 1]
+  return monthLabel ? `${monthLabel} ${day}, ${year}` : '-'
+}
+
 function recurringDateRange(rule) {
-  const start = formatDateShort(rule.start_date)
+  const start = formatRecurringDate(rule.start_date)
 
   if (!rule.end_date) {
     return `Desde ${start}`
   }
 
-  return `${start} - ${formatDateShort(rule.end_date)}`
+  return `${start} - ${formatRecurringDate(rule.end_date)}`
 }
 
 function accountLabel(accountId) {
