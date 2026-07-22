@@ -1,17 +1,17 @@
 import { defineStore } from 'pinia'
 
 import * as authService from '../services/auth'
-import { clearSession, getStoredSession, saveSession } from '../utils/session'
+import { configureAuthRefresh, requestAccessTokenRefresh } from '../services/api'
+import { clearSession, setAccessToken } from '../utils/session'
 import { getApiErrorMessage } from '../utils/errors'
 
-function normalizeTokenPair(tokens) {
-  if (!tokens?.access_token || !tokens?.refresh_token) {
+function normalizeAccessTokenResponse(tokens) {
+  if (!tokens?.access_token || !tokens?.token_type || !tokens?.expires_in) {
     throw new Error('Respuesta de autenticación inválida.')
   }
 
   return {
     access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
   }
 }
 
@@ -27,7 +27,6 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     accessToken: '',
-    refreshToken: '',
     isReady: false,
     loading: false,
     error: '',
@@ -36,21 +35,18 @@ export const useAuthStore = defineStore('auth', {
     isAuthenticated: (state) => Boolean(state.accessToken && state.user),
   },
   actions: {
-    restoreSession() {
-      const session = getStoredSession()
-      this.accessToken = session.accessToken
-      this.user = session.user
+    configureRefreshHandler() {
+      configureAuthRefresh(() => this.refreshAccessToken())
     },
-    persistSession() {
-      saveSession({
-        accessToken: this.accessToken,
-        user: this.user,
-      })
+    async refreshAccessToken() {
+      const tokens = normalizeAccessTokenResponse(await authService.refresh())
+      this.accessToken = tokens.access_token
+      setAccessToken(tokens.access_token)
+      return tokens
     },
     clearAuth() {
       this.user = null
       this.accessToken = ''
-      this.refreshToken = ''
       this.error = ''
       clearSession()
     },
@@ -59,27 +55,30 @@ export const useAuthStore = defineStore('auth', {
         return
       }
 
-      this.restoreSession()
+      this.configureRefreshHandler()
+      // Access tokens and user data are no longer persisted. This also clears
+      // the legacy localStorage session before trying the HttpOnly cookie.
+      clearSession()
 
-      if (!this.accessToken || !this.user) {
+      try {
+        await requestAccessTokenRefresh()
+        this.user = normalizeUser(await authService.me())
+      } catch {
         this.clearAuth()
+      } finally {
         this.isReady = true
-        return
       }
-
-      this.isReady = true
     },
     async login(payload) {
       this.loading = true
       this.error = ''
+      this.configureRefreshHandler()
 
       try {
-        const tokens = normalizeTokenPair(await authService.login(payload))
+        const tokens = normalizeAccessTokenResponse(await authService.login(payload))
         this.accessToken = tokens.access_token
-        this.refreshToken = tokens.refresh_token
-        this.persistSession()
+        setAccessToken(tokens.access_token)
         this.user = normalizeUser(await authService.me())
-        this.persistSession()
         return this.user
       } catch (error) {
         this.clearAuth()
@@ -111,9 +110,7 @@ export const useAuthStore = defineStore('auth', {
     },
     async logout() {
       try {
-        if (this.refreshToken) {
-          await authService.logout(this.refreshToken)
-        }
+        await authService.logout()
       } finally {
         this.clearAuth()
         this.isReady = true

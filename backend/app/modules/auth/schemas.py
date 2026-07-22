@@ -14,16 +14,16 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
-class RefreshIn(BaseModel):
-    refresh_token: str = Field(min_length=20)
-
-
-class LogoutIn(BaseModel):
-    refresh_token: str = Field(min_length=20)
-
-
 class TokenPair(BaseModel):
+    """Internal token result used while routes set the refresh cookie."""
+
     access_token: str
     refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class AccessTokenResponse(BaseModel):
+    access_token: str
     token_type: str = "bearer"
     expires_in: int

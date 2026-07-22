@@ -83,7 +83,15 @@ async def client(db_session_override) -> AsyncGenerator[AsyncClient, None]:
     # base_url must be a fully-qualified URL; httpx validates it on the first
     # request. Using a real-looking host avoids any DNS lookup since requests
     # are routed through ASGITransport, not the network stack.
-    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
+    settings = get_settings()
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        headers={
+            "Origin": settings.cors_origins[0],
+            settings.csrf_header_name: settings.csrf_header_value,
+        },
+    ) as ac:
         yield ac
 
 

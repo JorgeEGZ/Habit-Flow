@@ -45,6 +45,18 @@ class AuthenticationRequired(DomainError):
     message = "Authentication required."
 
 
+class CsrfValidationFailed(DomainError):
+    code = "csrf_validation_failed"
+    status_code = 403
+    message = "CSRF validation failed."
+
+
+class UntrustedOrigin(DomainError):
+    code = "untrusted_origin"
+    status_code = 403
+    message = "Request origin is not allowed."
+
+
 class HabitNotFound(DomainError):
     code = "habit_not_found"
     status_code = 404

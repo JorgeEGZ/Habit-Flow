@@ -65,8 +65,11 @@
           </header>
 
           <div class="habit-card__meta">
-            <span v-if="habit.tracking_mode === 'numeric'">Meta: {{ habit.target_value }} {{ habit.unit }}</span>
-            <span v-else>Hábito booleano</span>
+            <span v-if="habit.tracking_mode === 'numeric'">{{ targetLabel(habit) }}</span>
+            <span v-else>Hecho / No hecho</span>
+            <template v-if="habit.tracking_mode === 'numeric'">
+              <span>{{ numericProgressLabel(habit) }}</span>
+            </template>
             <span>Racha actual: {{ habitStreak(habit.id).current }}</span>
             <span class="habit-daily-status" :class="statusToneClass(getTodayStatus(habit).tone)">
               {{ getTodayStatus(habit).label }}
@@ -77,7 +80,7 @@
             <div v-if="habit.tracking_mode === 'boolean'" class="habit-log-inline">
               <Button
                 type="button"
-                :label="isLoggedToday(habit) ? 'Actualizar registro de hoy' : 'Marcar hoy'"
+                :label="isLoggedToday(habit) ? 'Completado hoy' : 'Marcar como hecho'"
                 icon="pi pi-check"
                 :loading="habitsStore.submitting"
                 @click="handleBooleanLog(habit)"
@@ -97,7 +100,7 @@
             <form v-else class="habit-log-form" @submit.prevent="handleNumericLog(habit)">
               <div class="habit-inline-grid">
                 <label class="habit-field">
-                  <span>Valor de hoy</span>
+                  <span>Cantidad realizada hoy</span>
                   <input v-model.number="getLogDraft(habit.id).loggedValue" class="habit-input" type="number" min="0" step="1" />
                 </label>
                 <label class="habit-field">
@@ -106,7 +109,7 @@
                 </label>
               </div>
               <div class="habit-log-inline">
-                <Button type="submit" :label="isLoggedToday(habit) ? 'Actualizar progreso de hoy' : 'Guardar progreso de hoy'" icon="pi pi-save" :loading="habitsStore.submitting" />
+                <Button type="submit" label="Guardar avance" icon="pi pi-save" :loading="habitsStore.submitting" />
                 <Button v-if="isLoggedToday(habit)" type="button" label="Borrar registro de hoy" icon="pi pi-times" severity="secondary" variant="outlined" :disabled="habitsStore.submitting" @click="handleDeleteLog(habit)" />
               </div>
             </form>
@@ -148,8 +151,8 @@
           </header>
 
           <div class="habit-card__meta">
-            <span v-if="habit.tracking_mode === 'numeric'">Meta: {{ habit.target_value }} {{ habit.unit }}</span>
-            <span v-else>Hábito booleano</span>
+            <span v-if="habit.tracking_mode === 'numeric'">{{ targetLabel(habit) }}</span>
+            <span v-else>Hecho / No hecho</span>
             <span>Frecuencia: {{ habit.frequency }}</span>
           </div>
 
@@ -192,7 +195,7 @@
             </div>
 
             <div class="habit-detail__configuration">
-              <span v-if="selectedHabit.tracking_mode === 'numeric'">Meta: {{ selectedHabit.target_value }} {{ selectedHabit.unit }}</span>
+              <span v-if="selectedHabit.tracking_mode === 'numeric'">{{ targetLabel(selectedHabit) }}</span>
               <span v-else>Este hábito se registra como completado o no completado.</span>
             </div>
 
@@ -218,9 +221,10 @@
           <span>Modo de seguimiento</span>
           <div v-if="editingHabitId" class="habit-mode-lock"><span class="habit-badge">{{ trackingModeLabel(form.trackingMode) }}</span><small>El modo no se puede cambiar después de crear el hábito.</small></div>
           <div v-else class="habit-toggle-group">
-            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.trackingMode === 'boolean' }" @click="setTrackingMode('boolean')">Booleano</button>
-            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.trackingMode === 'numeric' }" @click="setTrackingMode('numeric')">Numérico</button>
+            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.trackingMode === 'boolean' }" @click="setTrackingMode('boolean')">Hecho / No hecho</button>
+            <button type="button" class="habit-toggle" :class="{ 'habit-toggle--active': form.trackingMode === 'numeric' }" @click="setTrackingMode('numeric')">Cantidad</button>
           </div>
+          <small class="habit-form-helper">{{ trackingModeHelper(form.trackingMode) }}</small>
         </div>
 
         <div v-if="form.trackingMode === 'numeric'" class="habit-inline-grid">
@@ -294,7 +298,32 @@ watch(
 )
 
 function trackingModeLabel(mode) {
-  return mode === 'numeric' ? 'Numérico' : 'Booleano'
+  return mode === 'numeric' ? 'Cantidad' : 'Hecho / No hecho'
+}
+
+function trackingModeHelper(mode) {
+  if (mode === 'numeric') {
+    return 'Para hábitos donde registras un número, como leer 30 minutos, caminar 8000 pasos o tomar 2 litros de agua.'
+  }
+  return 'Para hábitos que solo necesitas marcar como completados, como meditar, tomar vitaminas o ir al gym.'
+}
+
+function targetLabel(habit) {
+  return `Meta: ${habit.target_value} ${habit.unit}`
+}
+
+function numericProgressLabel(habit) {
+  const loggedValue = Number(habitsStore.todayLogs[habit.id]?.logged_value ?? 0)
+  return `${loggedValue} / ${habit.target_value} ${habit.unit}`
+}
+
+function numericRemainingLabel(habit) {
+  const log = habitsStore.todayLogs[habit.id]
+  const remaining = Math.max(0, Number(habit.target_value) - Number(log?.logged_value ?? 0))
+  if (remaining === 0) {
+    return 'Completado hoy'
+  }
+  return `Faltan ${remaining} ${habit.unit}`
 }
 
 function statusToneClass(tone) {
@@ -313,6 +342,13 @@ function getTodayStatus(habit) {
   const log = habitsStore.todayLogs[habit.id]
   if (!log) {
     return { label: 'Sin registro en esta sesión', tone: 'neutral' }
+  }
+  if (habit.tracking_mode === 'numeric') {
+    const completed = Number(log.logged_value ?? 0) >= Number(habit.target_value)
+    return {
+      label: completed ? 'Completado hoy' : numericRemainingLabel(habit),
+      tone: completed ? 'success' : 'warning',
+    }
   }
   if (log.completed) {
     return { label: 'Completado hoy', tone: 'success' }

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,8 +45,19 @@ class Settings(BaseSettings):
         default_factory=lambda: ["GET", "POST", "PATCH", "DELETE"]
     )
     cors_headers: list[str] = Field(
-        default_factory=lambda: ["Authorization", "Content-Type"]
+        default_factory=lambda: [
+            "Authorization",
+            "Content-Type",
+            "X-CSRF-Protection",
+        ]
     )
+
+    refresh_cookie_name: str = Field(default="habitflow_refresh")
+    refresh_cookie_secure: bool = Field(default=False)
+    refresh_cookie_samesite: Literal["lax", "strict", "none"] = Field(default="lax")
+    refresh_cookie_path: str = Field(default="/api/v1/auth")
+    csrf_header_name: str = Field(default="X-CSRF-Protection")
+    csrf_header_value: str = Field(default="1")
 
     # ---------- validators ----------
 
@@ -56,8 +68,30 @@ class Settings(BaseSettings):
             raise ValueError("SECRET_KEY must not be empty.")
         return value
 
+    @field_validator(
+        "refresh_cookie_name",
+        "refresh_cookie_path",
+        "csrf_header_name",
+        "csrf_header_value",
+    )
+    @classmethod
+    def _require_nonempty_security_setting(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("Security settings must not be empty.")
+        return value
+
     @model_validator(mode="after")
     def _enforce_secret_strength_in_non_dev(self) -> "Settings":
+        if not self.cors_origins or "*" in self.cors_origins:
+            raise ValueError("CORS_ORIGINS must contain explicit origins when credentials are enabled.")
+        if self.csrf_header_name.lower() not in {
+            header.lower() for header in self.cors_headers
+        }:
+            raise ValueError("CORS_HEADERS must include the configured CSRF header.")
+        if self.refresh_cookie_samesite == "none" and not self.refresh_cookie_secure:
+            raise ValueError("REFRESH_COOKIE_SAMESITE=none requires REFRESH_COOKIE_SECURE=true.")
+        if self.environment != "development" and not self.refresh_cookie_secure:
+            raise ValueError("REFRESH_COOKIE_SECURE must be true outside development.")
         if self.environment == "development":
             return self
         # Outside development, the secret must be a real value: not a known
