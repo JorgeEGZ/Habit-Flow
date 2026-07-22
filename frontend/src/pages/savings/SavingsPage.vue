@@ -107,10 +107,11 @@
         <div>
           <Button
             type="button"
-            label="Metas"
+            label="Volver a metas"
             icon="pi pi-arrow-left"
             severity="secondary"
             variant="text"
+            class="app-button app-button--secondary app-button--compact savings-back-button"
             @click="returnToGoals"
           />
           <p class="savings-workspace-header__eyebrow">Detalle de meta</p>
@@ -120,7 +121,7 @@
         <div v-if="selectedGoal" class="savings-header-actions">
           <Button type="button" label="Registrar aporte" icon="pi pi-wallet" @click="openContributionDialog" />
           <Button type="button" label="Editar meta" icon="pi pi-pencil" severity="secondary" variant="outlined" @click="startGoalEdit(selectedGoal)" />
-          <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" aria-label="Eliminar meta" :disabled="savingsStore.submitting" @click="handleDeleteGoal(selectedGoal)" />
+          <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar meta" :disabled="savingsStore.submitting" @click="handleDeleteGoal(selectedGoal)" />
         </div>
       </header>
 
@@ -215,7 +216,7 @@
         {{ editingGoalId ? 'Actualiza la meta seleccionada.' : 'Crea una nueva meta de ahorro.' }}
       </p>
 
-      <form class="savings-form" @submit.prevent="handleGoalSubmit">
+      <form id="savings-goal-form" class="savings-form" @submit.prevent="handleGoalSubmit">
         <label class="savings-field">
           <span>Nombre</span>
           <InputText v-model="goalForm.name" class="savings-input" autocomplete="off" />
@@ -241,11 +242,11 @@
           {{ goalFormError }}
         </p>
 
-        <div class="savings-form__actions">
-          <Button type="submit" :label="editingGoalId ? 'Guardar cambios' : 'Crear meta'" icon="pi pi-check" :loading="savingsStore.submitting" />
-          <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" :disabled="savingsStore.submitting" @click="clearGoalForm" />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="savings-goal-form" :label="editingGoalId ? 'Guardar cambios' : 'Crear meta'" icon="pi pi-check" class="app-button app-button--primary" :loading="savingsStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="savingsStore.submitting" @click="clearGoalForm" />
+      </template>
     </Dialog>
 
     <Dialog
@@ -260,7 +261,7 @@
       </p>
 
       <template v-if="selectedGoal">
-        <form class="savings-form" @submit.prevent="handleContributionSubmit">
+        <form id="savings-contribution-form" class="savings-form" @submit.prevent="handleContributionSubmit">
           <div class="savings-inline-grid">
             <label class="savings-field">
               <span>Monto</span>
@@ -281,11 +282,11 @@
             {{ contributionFormError }}
           </p>
 
-          <div class="savings-form__actions">
-            <Button type="submit" label="Guardar aporte" icon="pi pi-wallet" :loading="savingsStore.submitting" />
-            <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" :disabled="savingsStore.submitting" @click="closeContributionDialog" />
-          </div>
         </form>
+      </template>
+      <template #footer>
+        <Button type="submit" form="savings-contribution-form" label="Guardar aporte" icon="pi pi-wallet" class="app-button app-button--primary" :loading="savingsStore.submitting" :disabled="!selectedGoal" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="savingsStore.submitting" @click="closeContributionDialog" />
       </template>
     </Dialog>
   </section>

@@ -1,12 +1,16 @@
 <template>
   <nav class="sidebar-nav" aria-label="Navegación principal">
-    <div class="sidebar-nav__brand">
+    <RouterLink
+      :to="{ name: 'dashboard' }"
+      class="sidebar-nav__brand"
+      aria-label="Ir al tablero"
+    >
       <div class="sidebar-nav__logo">H</div>
       <div>
         <p class="sidebar-nav__eyebrow">HabitFlow</p>
         <h1 class="sidebar-nav__title">Tablero personal</h1>
       </div>
-    </div>
+    </RouterLink>
 
     <div class="sidebar-nav__links">
       <RouterLink

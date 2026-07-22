@@ -208,7 +208,7 @@
         {{ editingHabitId ? 'Actualiza los datos del hábito seleccionado.' : 'Crea un hábito diario o semanal.' }}
       </p>
 
-      <form class="habits-form" @submit.prevent="handleSubmit">
+      <form id="habit-editor-form" class="habits-form" @submit.prevent="handleSubmit">
         <label class="habit-field"><span>Título</span><InputText v-model="form.title" class="habit-input" autocomplete="off" /></label>
         <label class="habit-field"><span>Descripción</span><textarea v-model="form.description" class="habit-textarea" rows="4" placeholder="Opcional" /></label>
 
@@ -241,11 +241,11 @@
         <small v-if="showsGoalFields" class="habit-form-helper">{{ goalHelper() }}</small>
 
         <p v-if="formError" class="dashboard-page__alert habits-form-card__alert">{{ formError }}</p>
-        <div class="habit-form__actions">
-          <Button type="submit" :label="editingHabitId ? 'Guardar cambios' : 'Crear hábito'" icon="pi pi-check" :loading="habitsStore.submitting" />
-          <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" :disabled="habitsStore.submitting" @click="cancelEdit" />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="habit-editor-form" :label="editingHabitId ? 'Guardar cambios' : 'Crear hábito'" icon="pi pi-check" class="app-button app-button--primary" :loading="habitsStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="habitsStore.submitting" @click="cancelEdit" />
+      </template>
     </Dialog>
   </section>
 </template>

@@ -109,8 +109,8 @@
             <div class="finance-data-cell"><span>Fecha</span><p>{{ formatDateShort(transaction.transaction_date) }}</p></div>
             <div class="finance-data-cell finance-data-cell--amount"><span>Monto</span><strong :class="transactionAmountClass(transaction.type)">{{ formatTransactionAmount(transaction) }}</strong></div>
             <div class="finance-data-row__actions">
-              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" aria-label="Editar movimiento" @click="startTransactionEdit(transaction)" />
-              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" aria-label="Eliminar movimiento" :disabled="financesStore.submitting" @click="handleDeleteTransaction(transaction)" />
+              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar movimiento" @click="startTransactionEdit(transaction)" />
+              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar movimiento" :disabled="financesStore.submitting" @click="handleDeleteTransaction(transaction)" />
             </div>
           </article>
         </div>
@@ -144,9 +144,9 @@
             <div class="finance-data-cell"><span>Estado</span><span class="recurring-status-pill" :class="recurringStatusClass(rule.is_active)">{{ rule.is_active ? 'Activa' : 'Pausada' }}</span></div>
             <div class="finance-data-cell finance-data-cell--amount"><span>Monto</span><strong :class="transactionAmountClass(rule.type)">{{ formatTransactionAmount(rule) }}</strong></div>
             <div class="finance-data-row__actions">
-              <Button type="button" :label="rule.is_active ? 'Pausar' : 'Activar'" icon="pi pi-power-off" severity="secondary" variant="outlined" :disabled="financesStore.submitting" @click="toggleRecurringActive(rule)" />
-              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" aria-label="Editar regla recurrente" @click="startRecurringEdit(rule)" />
-              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" aria-label="Eliminar regla recurrente" :disabled="financesStore.submitting" @click="handleDeleteRecurring(rule)" />
+              <Button type="button" :label="rule.is_active ? 'Pausar' : 'Reanudar'" :icon="rule.is_active ? 'pi pi-pause' : 'pi pi-play'" severity="secondary" variant="outlined" class="app-button app-button--secondary app-button--compact finance-recurring-toggle" :aria-label="rule.is_active ? 'Pausar regla recurrente' : 'Reanudar regla recurrente'" :disabled="financesStore.submitting" @click="toggleRecurringActive(rule)" />
+              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar regla recurrente" @click="startRecurringEdit(rule)" />
+              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar regla recurrente" :disabled="financesStore.submitting" @click="handleDeleteRecurring(rule)" />
             </div>
           </article>
         </div>
@@ -169,8 +169,8 @@
                 <div><strong>{{ account.name }}</strong><span>{{ accountTypeLabel(account.type) }} · Saldo inicial {{ formatCurrencyCop(account.initial_balance) }}</span></div>
                 <strong class="finance-compact-row__amount">{{ formatCurrencyCop(account.current_balance) }}</strong>
                 <div class="finance-compact-row__actions">
-                  <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" aria-label="Editar cuenta" @click="startAccountEdit(account)" />
-                  <Button type="button" icon="pi pi-trash" severity="danger" variant="text" aria-label="Eliminar cuenta" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
+                  <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar cuenta" @click="startAccountEdit(account)" />
+                  <Button type="button" icon="pi pi-trash" severity="danger" variant="text" class="app-button app-button--icon app-button--danger" aria-label="Eliminar cuenta" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
                 </div>
               </article>
             </div>
@@ -189,8 +189,8 @@
                   <article v-for="category in group.items" :key="category.id" class="finance-compact-row">
                     <div><strong>{{ category.name }}</strong><span>{{ categoryTypeLabel(category.type) }}</span></div>
                     <div class="finance-compact-row__actions">
-                      <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" aria-label="Editar categoría" @click="startCategoryEdit(category)" />
-                      <Button type="button" icon="pi pi-trash" severity="danger" variant="text" aria-label="Eliminar categoría" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
+                      <Button type="button" icon="pi pi-pencil" severity="secondary" variant="text" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar categoría" @click="startCategoryEdit(category)" />
+                      <Button type="button" icon="pi pi-trash" severity="danger" variant="text" class="app-button app-button--icon app-button--danger" aria-label="Eliminar categoría" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
                     </div>
                   </article>
                 </div>
@@ -215,7 +215,7 @@
         {{ transactionFormError }}
       </p>
 
-      <form class="transaction-form" @submit.prevent="handleTransactionSubmit">
+      <form id="transaction-editor-form" class="transaction-form" @submit.prevent="handleTransactionSubmit">
         <div class="transaction-inline-grid">
           <label class="transaction-field">
             <span>Fecha</span>
@@ -285,24 +285,11 @@
           La categoría seleccionada debe coincidir con el tipo del movimiento.
         </p>
 
-        <div class="finance-form__actions">
-          <Button
-            type="submit"
-            :label="editingTransactionId ? 'Guardar cambios' : 'Crear movimiento'"
-            icon="pi pi-check"
-            :loading="financesStore.submitting"
-          />
-          <Button
-            type="button"
-            label="Cancelar"
-            icon="pi pi-times"
-            severity="secondary"
-            variant="outlined"
-            :disabled="financesStore.submitting"
-            @click="resetTransactionForm"
-          />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="transaction-editor-form" :label="editingTransactionId ? 'Guardar cambios' : 'Crear movimiento'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetTransactionForm" />
+      </template>
     </Dialog>
 
     <Dialog
@@ -320,7 +307,7 @@
         {{ recurringFormError }}
       </p>
 
-      <form class="recurring-form" @submit.prevent="handleRecurringSubmit">
+      <form id="recurring-editor-form" class="recurring-form" @submit.prevent="handleRecurringSubmit">
         <div class="recurring-inline-grid">
           <label class="recurring-field">
             <span>Fecha de inicio</span>
@@ -411,24 +398,11 @@
           La categoría debe coincidir con el tipo de la regla y el monto debe ser mayor que cero.
         </p>
 
-        <div class="finance-form__actions">
-          <Button
-            type="submit"
-            :label="editingRecurringId ? 'Guardar cambios' : 'Crear regla'"
-            icon="pi pi-check"
-            :loading="financesStore.submitting"
-          />
-          <Button
-            type="button"
-            label="Cancelar"
-            icon="pi pi-times"
-            severity="secondary"
-            variant="outlined"
-            :disabled="financesStore.submitting"
-            @click="resetRecurringForm"
-          />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="recurring-editor-form" :label="editingRecurringId ? 'Guardar cambios' : 'Crear regla'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetRecurringForm" />
+      </template>
     </Dialog>
 
     <Dialog
@@ -446,7 +420,7 @@
         {{ accountFormError }}
       </p>
 
-      <form class="finance-form" @submit.prevent="handleAccountSubmit">
+      <form id="account-editor-form" class="finance-form" @submit.prevent="handleAccountSubmit">
         <label class="finance-field">
           <span>Nombre</span>
           <InputText v-model="accountForm.name" class="finance-input" autocomplete="off" />
@@ -484,24 +458,11 @@
           El saldo actual se calcula de forma automática y no se edita aquí.
         </p>
 
-        <div class="finance-form__actions">
-          <Button
-            type="submit"
-            :label="editingAccountId ? 'Guardar cambios' : 'Crear cuenta'"
-            icon="pi pi-check"
-            :loading="financesStore.submitting"
-          />
-          <Button
-            type="button"
-            label="Cancelar"
-            icon="pi pi-times"
-            severity="secondary"
-            variant="outlined"
-            :disabled="financesStore.submitting"
-            @click="resetAccountForm"
-          />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="account-editor-form" :label="editingAccountId ? 'Guardar cambios' : 'Crear cuenta'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetAccountForm" />
+      </template>
     </Dialog>
 
     <Dialog
@@ -519,7 +480,7 @@
         {{ categoryFormError }}
       </p>
 
-      <form class="finance-form" @submit.prevent="handleCategorySubmit">
+      <form id="category-editor-form" class="finance-form" @submit.prevent="handleCategorySubmit">
         <label class="finance-field">
           <span>Nombre</span>
           <InputText v-model="categoryForm.name" class="finance-input" autocomplete="off" />
@@ -541,24 +502,11 @@
           </div>
         </div>
 
-        <div class="finance-form__actions">
-          <Button
-            type="submit"
-            :label="editingCategoryId ? 'Guardar cambios' : 'Crear categoría'"
-            icon="pi pi-check"
-            :loading="financesStore.submitting"
-          />
-          <Button
-            type="button"
-            label="Cancelar"
-            icon="pi pi-times"
-            severity="secondary"
-            variant="outlined"
-            :disabled="financesStore.submitting"
-            @click="resetCategoryForm"
-          />
-        </div>
       </form>
+      <template #footer>
+        <Button type="submit" form="category-editor-form" :label="editingCategoryId ? 'Guardar cambios' : 'Crear categoría'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetCategoryForm" />
+      </template>
     </Dialog>
   </section>
 </template>

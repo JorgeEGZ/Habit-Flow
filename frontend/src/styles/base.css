@@ -215,6 +215,23 @@ svg {
   gap: 0.85rem;
 }
 
+.sidebar-nav__brand {
+  margin: -0.4rem;
+  padding: 0.4rem;
+  border-radius: 0.85rem;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.sidebar-nav__brand:hover {
+  background: rgba(85, 126, 230, 0.08);
+}
+
+.sidebar-nav__brand:focus-visible {
+  background: rgba(85, 126, 230, 0.1);
+  box-shadow: 0 0 0 3px rgba(85, 126, 230, 0.22);
+  outline: none;
+}
+
 .sidebar-nav__logo,
 .auth-layout__logo {
   display: grid;
@@ -1180,6 +1197,11 @@ svg {
   flex-shrink: 0;
 }
 
+.savings-back-button {
+  width: fit-content;
+  margin-bottom: 0.65rem;
+}
+
 .savings-page__subtitle,
 .savings-form-card__subtitle {
   margin: 0 0 1rem;
@@ -1386,7 +1408,17 @@ svg {
 }
 
 .savings-detail__goal-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.85rem;
   color: var(--app-text-muted);
+}
+
+.savings-detail__goal-meta .goal-status-badge {
+  min-height: 1.9rem;
+  padding-inline: 0.65rem;
+  font-size: 0.82rem;
 }
 
 .savings-contribution-list {
@@ -1600,6 +1632,7 @@ svg {
 .app-dialog {
   width: min(46rem, calc(100vw - 2rem));
   max-width: calc(100vw - 2rem);
+  max-height: min(90dvh, 52rem);
 }
 
 .app-dialog .p-dialog-header {
@@ -1608,7 +1641,11 @@ svg {
 }
 
 .app-dialog .p-dialog-content {
+  flex: 1 1 auto;
   padding: 1.2rem 1.25rem 1.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .app-dialog .p-dialog-header-title {
@@ -1618,6 +1655,30 @@ svg {
 
 .app-dialog .p-dialog-header-icons {
   gap: 0.35rem;
+}
+
+.app-dialog .p-dialog-footer {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding: 0.9rem 1.25rem 1.1rem;
+  border-top: 1px solid var(--app-border);
+  background: rgba(15, 23, 34, 0.98);
+}
+
+.app-dialog .p-dialog-footer .p-button {
+  margin: 0;
+}
+
+.app-dialog :is(.habits-form, .savings-form, .transaction-form, .recurring-form, .finance-form) {
+  gap: 1rem;
+}
+
+.app-dialog :is(.habit-field, .savings-field, .transaction-field, .recurring-field, .finance-field) > span {
+  color: var(--app-text);
+  font-weight: 600;
 }
 
 .finance-list {
@@ -2144,9 +2205,86 @@ svg {
   padding-inline: 1rem;
 }
 
+.p-button.app-button--primary {
+  border-color: var(--app-accent);
+  background: var(--app-accent);
+  color: #ffffff;
+}
+
+.p-button.app-button--primary:hover {
+  border-color: #6d91eb;
+  background: #6d91eb;
+}
+
+.p-button.app-button--secondary {
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-2);
+  color: var(--app-text);
+}
+
+.p-button.app-button--secondary:hover {
+  border-color: #475569;
+  background: var(--app-surface-3);
+}
+
+.p-button.app-button--compact {
+  min-height: 2.35rem;
+  padding-inline: 0.75rem;
+  border-radius: 0.7rem;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.p-button.app-button--icon {
+  width: 2.45rem;
+  min-width: 2.45rem;
+  min-height: 2.45rem;
+  padding: 0;
+  border-radius: 0.7rem;
+}
+
+.p-button.app-button--icon-secondary {
+  border-color: #c7d2df;
+  background: #c7d2df;
+  color: #111827;
+}
+
+.p-button.app-button--icon-secondary:hover {
+  border-color: #e2e8f0;
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.p-button.app-button--danger {
+  border-color: #f29a9a;
+  background: #f29a9a;
+  color: #321010;
+}
+
+.p-button.app-button--danger:hover {
+  border-color: #f6b0b0;
+  background: #f6b0b0;
+  color: #260b0b;
+}
+
+.p-button.app-button--primary:focus-visible,
+.p-button.app-button--secondary:focus-visible,
+.p-button.app-button--icon:focus-visible {
+  box-shadow: 0 0 0 3px rgba(85, 126, 230, 0.3);
+  outline: none;
+}
+
+.p-button.app-button--icon:disabled {
+  opacity: 0.5;
+}
+
 .p-button.p-button-icon-only {
   width: 2.75rem;
   padding-inline: 0;
+}
+
+.p-button.p-button-icon-only.app-button--icon {
+  width: 2.45rem;
 }
 
 .p-button .p-button-label {
@@ -2377,14 +2515,29 @@ svg {
     width: 100%;
   }
 
+  .savings-header-actions .app-button--icon {
+    width: 2.75rem;
+    align-self: flex-start;
+  }
+
   .app-dialog {
     width: calc(100vw - 1rem);
     max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1rem);
   }
 
   .app-dialog .p-dialog-header,
   .app-dialog .p-dialog-content {
     padding-inline: 1rem;
+  }
+
+  .app-dialog .p-dialog-footer {
+    flex-direction: column;
+    padding: 0.85rem 1rem max(0.85rem, env(safe-area-inset-bottom));
+  }
+
+  .app-dialog .p-dialog-footer .p-button {
+    width: 100%;
   }
 }
 
@@ -2589,7 +2742,7 @@ svg {
 
 .finance-data-table--recurring .finance-data-table__head,
 .finance-data-table--recurring .finance-data-row {
-  grid-template-columns: minmax(9rem, 1.35fr) minmax(6rem, 0.9fr) minmax(6rem, 0.9fr) 6.5rem 6.5rem 7.5rem 10rem;
+  grid-template-columns: minmax(9rem, 1.35fr) minmax(6rem, 0.9fr) minmax(6rem, 0.9fr) 6.5rem 6.5rem 7.5rem 13.25rem;
 }
 
 .finance-data-table__head {
@@ -2599,6 +2752,11 @@ svg {
   font-weight: 700;
   letter-spacing: 0.035em;
   text-transform: uppercase;
+}
+
+.finance-data-table--transactions .finance-data-table__head > :nth-child(5),
+.finance-data-table--recurring .finance-data-table__head > :nth-child(6) {
+  text-align: right;
 }
 
 .finance-data-row {
@@ -2643,6 +2801,11 @@ svg {
 
 .finance-data-cell--amount {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-data-cell--amount strong {
+  width: 100%;
 }
 
 .finance-data-row__actions,
@@ -2651,6 +2814,22 @@ svg {
   align-items: center;
   justify-content: flex-end;
   gap: 0.35rem;
+}
+
+.finance-data-row__actions {
+  flex-wrap: nowrap;
+}
+
+.finance-recurring-toggle {
+  flex: 0 0 auto;
+  min-width: 6.7rem;
+}
+
+.finance-data-table--recurring .recurring-status-pill {
+  min-height: 1.9rem;
+  padding-inline: 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .finance-data-row__actions .p-button,
@@ -2737,6 +2916,32 @@ svg {
   color: var(--app-text-muted);
   font-size: 0.8rem;
   text-transform: uppercase;
+}
+
+@media (max-width: 1280px) {
+  .finance-data-table__head {
+    display: none;
+  }
+
+  .finance-data-table--transactions .finance-data-row,
+  .finance-data-table--recurring .finance-data-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .finance-data-cell > span {
+    display: block;
+    margin-bottom: 0.2rem;
+  }
+
+  .finance-data-cell--amount {
+    text-align: left;
+  }
+
+  .finance-data-row__actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 1100px) {
