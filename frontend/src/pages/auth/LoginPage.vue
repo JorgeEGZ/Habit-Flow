@@ -20,6 +20,9 @@
         />
       </label>
 
+      <p v-if="passwordChanged && !error" class="form-success" role="status">
+        Contraseña actualizada. Inicia sesión nuevamente.
+      </p>
       <p v-if="error" class="form-error">{{ error }}</p>
 
       <Button
@@ -55,6 +58,7 @@ const form = reactive({
 })
 
 const error = computed(() => authStore.error)
+const passwordChanged = computed(() => route.query.passwordChanged === '1')
 
 async function handleSubmit() {
   try {

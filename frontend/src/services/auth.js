@@ -1,4 +1,4 @@
-import { api, authApi } from './api'
+import { authApi } from './api'
 
 export async function login(payload) {
   const { data } = await authApi.post('/auth/login', payload)
@@ -17,9 +17,4 @@ export async function refresh() {
 
 export async function logout() {
   await authApi.post('/auth/logout')
-}
-
-export async function me() {
-  const { data } = await api.get('/users/me')
-  return data
 }

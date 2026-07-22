@@ -1,4 +1,4 @@
-export function getApiErrorMessage(error, fallback = 'Ha ocurrido un error.') {
+export function getApiErrorMessage(error, fallback = 'Ha ocurrido un error.', options = {}) {
   const code = error?.response?.data?.error?.code
   const message = error?.response?.data?.error?.message
 
@@ -10,6 +10,8 @@ export function getApiErrorMessage(error, fallback = 'Ha ocurrido un error.') {
     refresh_token_reuse_detected: 'Tu sesión ha expirado. Vuelve a iniciar sesión.',
     validation_error: 'Revisa los datos e inténtalo de nuevo.',
     resource_in_use: 'No se puede completar esta acción porque el recurso tiene registros asociados.',
+    invalid_current_password: 'La contraseña actual no es correcta.',
+    password_must_differ: 'La nueva contraseña debe ser diferente de la actual.',
   }
 
   const messageMap = {
@@ -33,5 +35,10 @@ export function getApiErrorMessage(error, fallback = 'Ha ocurrido un error.') {
     'Transaction date is required.': 'La fecha del movimiento es obligatoria.',
   }
 
-  return codeMap[code] || messageMap[message] || message || error?.message || fallback
+  const mappedMessage = codeMap[code] || messageMap[message]
+  if (mappedMessage || options.safeOnly) {
+    return mappedMessage || fallback
+  }
+
+  return message || error?.message || fallback
 }

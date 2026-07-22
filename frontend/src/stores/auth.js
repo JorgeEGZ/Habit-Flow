@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import * as authService from '../services/auth'
+import * as usersService from '../services/users'
 import { configureAuthRefresh, requestAccessTokenRefresh } from '../services/api'
 import { clearSession, setAccessToken } from '../utils/session'
 import { getApiErrorMessage } from '../utils/errors'
@@ -31,6 +32,8 @@ export const useAuthStore = defineStore('auth', {
     accessToken: '',
     isReady: false,
     loading: false,
+    profileLoading: false,
+    passwordLoading: false,
     error: '',
   }),
   getters: {
@@ -68,7 +71,7 @@ export const useAuthStore = defineStore('auth', {
 
         try {
           await requestAccessTokenRefresh()
-          this.user = normalizeUser(await authService.me())
+          this.user = normalizeUser(await usersService.getMe())
         } catch {
           // Missing cookies, 401/403 responses, CORS failures, and network
           // errors all degrade safely to an anonymous session.
@@ -93,7 +96,7 @@ export const useAuthStore = defineStore('auth', {
         const tokens = normalizeAccessTokenResponse(await authService.login(payload))
         this.accessToken = tokens.access_token
         setAccessToken(tokens.access_token)
-        this.user = normalizeUser(await authService.me())
+        this.user = normalizeUser(await usersService.getMe())
         return this.user
       } catch (error) {
         this.clearAuth()
@@ -129,6 +132,45 @@ export const useAuthStore = defineStore('auth', {
       } finally {
         this.clearAuth()
         this.isReady = true
+      }
+    },
+    async updateProfile(payload) {
+      this.profileLoading = true
+      this.error = ''
+
+      try {
+        this.user = normalizeUser(await usersService.updateMe(payload))
+        return this.user
+      } catch (error) {
+        this.error = getApiErrorMessage(error, 'No fue posible actualizar el perfil.', {
+          safeOnly: true,
+        })
+        throw error
+      } finally {
+        this.profileLoading = false
+      }
+    },
+    async changePassword(payload) {
+      this.passwordLoading = true
+      this.error = ''
+
+      try {
+        await usersService.changePassword(payload)
+
+        // Password changes revoke all refresh tokens. Logout can therefore
+        // fail remotely, but its finally block still clears the local state.
+        try {
+          await this.logout()
+        } catch {
+          // Local cleanup is guaranteed by logout().
+        }
+      } catch (error) {
+        this.error = getApiErrorMessage(error, 'No fue posible actualizar la contraseña.', {
+          safeOnly: true,
+        })
+        throw error
+      } finally {
+        this.passwordLoading = false
       }
     },
   },

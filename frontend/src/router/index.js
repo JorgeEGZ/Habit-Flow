@@ -45,6 +45,15 @@ const router = createRouter({
           },
         },
         {
+          path: 'profile',
+          name: 'profile',
+          component: () => import('../pages/profile/ProfilePage.vue'),
+          meta: {
+            title: 'Mi perfil',
+            section: 'profile',
+          },
+        },
+        {
           path: 'habits',
           name: 'habits',
           redirect: { name: 'habits-today' },

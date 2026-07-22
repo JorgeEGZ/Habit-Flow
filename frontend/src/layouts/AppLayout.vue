@@ -10,14 +10,7 @@
           <p class="app-shell__eyebrow">HabitFlow</p>
           <h2 class="app-shell__title">{{ pageTitle }}</h2>
         </div>
-        <Button
-          class="app-shell__logout"
-          severity="secondary"
-          variant="outlined"
-          icon="pi pi-sign-out"
-          label="Cerrar sesión"
-          @click="handleLogout"
-        />
+        <UserMenu />
       </header>
 
       <main class="app-shell__content">
@@ -31,20 +24,13 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
 import SidebarNav from '../components/layout/SidebarNav.vue'
 import BottomNav from '../components/layout/BottomNav.vue'
-import { useAuthStore } from '../stores/auth'
+import UserMenu from '../components/layout/UserMenu.vue'
 
 const route = useRoute()
-const router = useRouter()
-const authStore = useAuthStore()
 
 const pageTitle = computed(() => route.meta.title || 'HabitFlow')
-
-async function handleLogout() {
-  await authStore.logout()
-  await router.push({ name: 'login' })
-}
 </script>
