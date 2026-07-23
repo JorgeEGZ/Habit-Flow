@@ -589,7 +589,14 @@
       <form id="monthly-budget-editor-form" class="finance-form" @submit.prevent="handleMonthlyBudgetSubmit">
         <label class="finance-field">
           <span>Mes</span>
-          <input :value="budgetMonth" class="finance-input" type="month" disabled />
+          <input
+            v-if="!editingMonthlyBudgetId"
+            v-model="monthlyBudgetForm.month"
+            class="finance-input"
+            type="month"
+            required
+          />
+          <input v-else :value="monthlyBudgetForm.month" class="finance-input" type="month" disabled />
         </label>
 
         <label class="finance-field">
@@ -601,6 +608,13 @@
             </option>
           </select>
         </label>
+
+        <p
+          v-if="!editingMonthlyBudgetId && !loadingMonthlyBudgetCategories && !monthlyBudgetCategoryOptions.length"
+          class="finance-panel__hint"
+        >
+          No hay categorías de gasto disponibles para este mes.
+        </p>
 
         <label class="finance-field">
           <span>Presupuesto</span>
@@ -753,6 +767,7 @@ const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
 const budgetMonth = ref('')
 const appliedBudgetMonth = ref('')
+const loadingMonthlyBudgetCategories = ref(false)
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
 
@@ -790,6 +805,7 @@ const recurringForm = reactive({
 
 const monthlyBudgetForm = reactive({
   categoryId: '',
+  month: '',
   amount: 1,
 })
 
@@ -868,13 +884,14 @@ const recurringCategoryOptions = computed(() =>
 
 const monthlyBudgetCategoryOptions = computed(() => {
   const budgetedCategoryIds = new Set(
-    (monthlyBudgets.value?.budgets ?? []).map((budget) => budget.category_id),
+    financesStore.budgetedCategoryIdsByMonth[monthlyBudgetForm.month] ?? [],
   )
 
   return categories.value.filter(
     (category) =>
       category.type === 'expense' &&
-      (category.id === monthlyBudgetForm.categoryId || !budgetedCategoryIds.has(category.id)),
+      (editingMonthlyBudgetId.value && category.id === monthlyBudgetForm.categoryId) ||
+      !budgetedCategoryIds.has(category.id),
   )
 })
 
@@ -994,6 +1011,26 @@ watch(spendingMonth, (month) => {
 watch(budgetMonth, (month) => {
   if (isBudgetsWorkspace.value && month && month !== appliedBudgetMonth.value) {
     void loadMonthlyBudgets(month)
+  }
+})
+
+watch(
+  () => monthlyBudgetForm.month,
+  (month) => {
+    if (!showMonthlyBudgetDialog.value || editingMonthlyBudgetId.value || !month) {
+      return
+    }
+    void loadMonthlyBudgetCategories(month)
+  },
+)
+
+watch(monthlyBudgetCategoryOptions, (options) => {
+  if (
+    !editingMonthlyBudgetId.value &&
+    monthlyBudgetForm.categoryId &&
+    !options.some((category) => category.id === monthlyBudgetForm.categoryId)
+  ) {
+    monthlyBudgetForm.categoryId = ''
   }
 })
 
@@ -1170,6 +1207,7 @@ function resetRecurringForm() {
 function resetMonthlyBudgetForm() {
   editingMonthlyBudgetId.value = ''
   monthlyBudgetForm.categoryId = ''
+  monthlyBudgetForm.month = ''
   monthlyBudgetForm.amount = 1
   monthlyBudgetFormError.value = ''
   showMonthlyBudgetDialog.value = false
@@ -1197,7 +1235,11 @@ function openCreateRecurringDialog() {
 
 function openCreateMonthlyBudgetDialog() {
   resetMonthlyBudgetForm()
+  monthlyBudgetForm.month = budgetMonth.value
   showMonthlyBudgetDialog.value = true
+  if (monthlyBudgetForm.month) {
+    void loadMonthlyBudgetCategories(monthlyBudgetForm.month)
+  }
 }
 
 function resetTransactionFilters() {
@@ -1254,6 +1296,7 @@ function startRecurringEdit(rule) {
 function startMonthlyBudgetEdit(budget) {
   editingMonthlyBudgetId.value = budget.budget_id
   monthlyBudgetForm.categoryId = budget.category_id
+  monthlyBudgetForm.month = budgetMonth.value
   monthlyBudgetForm.amount = budget.budget_amount
   monthlyBudgetFormError.value = ''
   showMonthlyBudgetDialog.value = true
@@ -1403,10 +1446,11 @@ function buildRecurringPayload() {
 
 function buildMonthlyBudgetPayload() {
   const categoryId = monthlyBudgetForm.categoryId
+  const month = monthlyBudgetForm.month
   const amount = Number(monthlyBudgetForm.amount)
   const category = categoryById.value[categoryId]
 
-  if (!budgetMonth.value) {
+  if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) {
     throw new Error('Selecciona un mes válido.')
   }
   if (!categoryId || !category) {
@@ -1421,7 +1465,7 @@ function buildMonthlyBudgetPayload() {
 
   return {
     category_id: categoryId,
-    month: budgetMonth.value,
+    month,
     amount,
   }
 }
@@ -1486,6 +1530,17 @@ async function loadMonthlyBudgets(month = budgetMonth.value || undefined) {
     return summary
   } catch {
     return null
+  }
+}
+
+async function loadMonthlyBudgetCategories(month) {
+  loadingMonthlyBudgetCategories.value = true
+  try {
+    await financesStore.fetchBudgetedCategoryIds(month)
+  } catch {
+    return
+  } finally {
+    loadingMonthlyBudgetCategories.value = false
   }
 }
 
@@ -1575,6 +1630,8 @@ async function handleMonthlyBudgetSubmit() {
     } else {
       await financesStore.createMonthlyBudget(payload)
     }
+    budgetMonth.value = payload.month
+    await loadMonthlyBudgets(payload.month)
     resetMonthlyBudgetForm()
   } catch (error) {
     monthlyBudgetFormError.value = error instanceof Error ? error.message : 'No fue posible guardar el presupuesto.'

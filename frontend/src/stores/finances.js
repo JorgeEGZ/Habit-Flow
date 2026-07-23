@@ -21,6 +21,7 @@ export const useFinancesStore = defineStore('finances', {
     spendingByCategoryError: '',
     monthlyBudgets: null,
     monthlyBudgetsError: '',
+    budgetedCategoryIdsByMonth: {},
     upcomingRecurring: null,
     upcomingRecurringError: '',
   }),
@@ -93,6 +94,9 @@ export const useFinancesStore = defineStore('finances', {
 
       try {
         this.monthlyBudgets = await financesService.getMonthlyBudgets(month)
+        this.budgetedCategoryIdsByMonth[this.monthlyBudgets.month] = this.monthlyBudgets.budgets.map(
+          (budget) => budget.category_id,
+        )
         return this.monthlyBudgets
       } catch (error) {
         this.monthlyBudgetsError = 'No fue posible cargar los presupuestos.'
@@ -100,6 +104,14 @@ export const useFinancesStore = defineStore('finances', {
       } finally {
         this.loadingMonthlyBudgets = false
       }
+    },
+
+    async fetchBudgetedCategoryIds(month) {
+      const summary = await financesService.getMonthlyBudgets(month)
+      this.budgetedCategoryIdsByMonth[summary.month] = summary.budgets.map(
+        (budget) => budget.category_id,
+      )
+      return this.budgetedCategoryIdsByMonth[summary.month]
     },
 
     async fetchUpcomingRecurring(days = 30) {
