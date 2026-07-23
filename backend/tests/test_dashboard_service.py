@@ -12,6 +12,7 @@ from app.modules.finances import service as finances_service
 from app.modules.finances.schemas import (
     AccountCreate,
     CategoryCreate,
+    MonthlyCategoryBudgetCreate,
     RecurringTransactionCreate,
     TransactionCreate,
 )
@@ -480,3 +481,130 @@ async def test_dashboard_aggregate_paths_are_user_scoped(session: AsyncSession) 
     assert summary.finances.insights.top_spending_category is None
     assert summary.finances.insights.upcoming_recurring.occurrence_count == 0
     assert finances.account_balances == []
+
+
+async def test_finance_dashboard_monthly_budget_warnings(session: AsyncSession) -> None:
+    user = await _make_user(session, "dash-budget-warnings@example.com")
+    account = await finances_service.create_account(
+        session,
+        user_id=user.id,
+        payload=AccountCreate(name="Checking", type="checking", initial_balance=0),
+    )
+    income_category = await finances_service.create_category(
+        session,
+        user_id=user.id,
+        payload=CategoryCreate(name="Salary", type="income"),
+    )
+    categories = {}
+    for name in ("Over", "Limit", "Near Alpha", "Near Zulu", "On track", "Unbudgeted"):
+        categories[name] = await finances_service.create_category(
+            session,
+            user_id=user.id,
+            payload=CategoryCreate(name=name, type="expense"),
+        )
+
+    for name in ("Over", "Limit", "Near Alpha", "Near Zulu", "On track"):
+        await finances_service.create_monthly_budget(
+            session,
+            user_id=user.id,
+            payload=MonthlyCategoryBudgetCreate(
+                category_id=categories[name].id,
+                month="2026-06",
+                amount=100,
+            ),
+        )
+
+    for category_name, amount in (
+        ("Over", 120),
+        ("Limit", 100),
+        ("Near Alpha", 80),
+        ("Near Zulu", 90),
+        ("On track", 50),
+        ("Unbudgeted", 200),
+    ):
+        await finances_service.create_transaction(
+            session,
+            user_id=user.id,
+            payload=TransactionCreate(
+                account_id=account.id,
+                category_id=categories[category_name].id,
+                type="expense",
+                amount=amount,
+                transaction_date=TODAY,
+            ),
+        )
+    await finances_service.create_transaction(
+        session,
+        user_id=user.id,
+        payload=TransactionCreate(
+            account_id=account.id,
+            category_id=income_category.id,
+            type="income",
+            amount=700,
+            transaction_date=TODAY,
+        ),
+    )
+    await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(
+            account_id=account.id,
+            category_id=categories["Over"].id,
+            type="expense",
+            amount=500,
+            description="Projected only",
+            frequency="monthly",
+            start_date=TODAY,
+        ),
+    )
+
+    other_user = await _make_user(session, "dash-budget-other@example.com")
+    other_account = await finances_service.create_account(
+        session,
+        user_id=other_user.id,
+        payload=AccountCreate(name="Other", type="cash", initial_balance=0),
+    )
+    other_category = await finances_service.create_category(
+        session,
+        user_id=other_user.id,
+        payload=CategoryCreate(name="Other expense", type="expense"),
+    )
+    await finances_service.create_monthly_budget(
+        session,
+        user_id=other_user.id,
+        payload=MonthlyCategoryBudgetCreate(
+            category_id=other_category.id,
+            month="2026-06",
+            amount=100,
+        ),
+    )
+    await finances_service.create_transaction(
+        session,
+        user_id=other_user.id,
+        payload=TransactionCreate(
+            account_id=other_account.id,
+            category_id=other_category.id,
+            type="expense",
+            amount=100,
+            transaction_date=TODAY,
+        ),
+    )
+
+    finances = await dashboard_service.get_finances(session, user_id=user.id, today=TODAY)
+    budgets = finances.insights.monthly_budgets
+
+    assert budgets.month == "2026-06"
+    assert budgets.total_budget_amount == 500
+    assert budgets.total_spent_amount == 440
+    assert budgets.total_remaining_amount == 80
+    assert budgets.total_over_budget_amount == 20
+    assert budgets.budget_count == 5
+    assert budgets.warning_count == 4
+    assert budgets.exceeded_count == 1
+    assert budgets.limit_reached_count == 1
+    assert budgets.near_limit_count == 2
+    assert [(item.category_name, item.status, item.usage_percentage) for item in budgets.warnings] == [
+        ("Over", "exceeded", 120),
+        ("Limit", "limit_reached", 100),
+        ("Near Zulu", "near_limit", 90),
+    ]

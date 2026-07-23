@@ -15,7 +15,7 @@
       </div>
     </div>
 
-    <p v-else-if="dashboardStore.error" class="dashboard-page__alert">
+    <p v-else-if="dashboardStore.error && !dashboardStore.summary" class="dashboard-page__alert">
       {{ dashboardStore.error }}
     </p>
 
@@ -138,6 +138,69 @@
       </section>
 
       <section class="dashboard-columns dashboard-columns--finance-insights" aria-label="Información financiera">
+        <Card class="dashboard-panel dashboard-finance-insight dashboard-finance-insight--budget">
+          <template #content>
+            <header class="dashboard-panel__header">
+              <div>
+                <p class="dashboard-panel__eyebrow">Finanzas</p>
+                <h2>Presupuestos del mes</h2>
+              </div>
+              <RouterLink :to="{ name: 'finances-budgets' }" class="dashboard-panel__action">
+                Ver presupuestos
+              </RouterLink>
+            </header>
+
+            <div v-if="monthlyBudgets.budget_count" class="dashboard-budget-insight">
+              <div class="dashboard-budget-insight__summary">
+                <div>
+                  <span>Presupuestado</span>
+                  <strong>{{ formatCurrencyCop(monthlyBudgets.total_budget_amount) }}</strong>
+                </div>
+                <div>
+                  <span>Gastado en categorías presupuestadas</span>
+                  <strong class="dashboard-kpi__expense">{{ formatCurrencyCop(monthlyBudgets.total_spent_amount) }}</strong>
+                </div>
+                <div>
+                  <span>Disponible</span>
+                  <strong>{{ formatCurrencyCop(monthlyBudgets.total_remaining_amount) }}</strong>
+                </div>
+                <div>
+                  <span>Excedido</span>
+                  <strong :class="monthlyBudgets.total_over_budget_amount ? 'dashboard-kpi__expense' : ''">
+                    {{ formatCurrencyCop(monthlyBudgets.total_over_budget_amount) }}
+                  </strong>
+                </div>
+              </div>
+
+              <div v-if="monthlyBudgets.warning_count" class="dashboard-budget-insight__warnings">
+                <article v-for="warning in monthlyBudgets.warnings" :key="warning.budget_id" class="dashboard-budget-warning">
+                  <div class="dashboard-budget-warning__heading">
+                    <strong>{{ warning.category_name }}</strong>
+                    <span :class="['dashboard-budget-warning__status', budgetWarningClass(warning.status)]">
+                      {{ budgetWarningLabel(warning.status) }}
+                    </span>
+                  </div>
+                  <div class="dashboard-budget-warning__details">
+                    <span>Gastado {{ formatCurrencyCop(warning.spent_amount) }} de {{ formatCurrencyCop(warning.budget_amount) }}</span>
+                    <strong>{{ formatPercentage(warning.usage_percentage) }}</strong>
+                  </div>
+                  <div class="dashboard-budget-warning__progress" role="progressbar" :aria-valuenow="Math.min(warning.usage_percentage, 100)" aria-valuemin="0" aria-valuemax="100">
+                    <span :style="{ width: progressWidth(warning.usage_percentage) }"></span>
+                  </div>
+                </article>
+                <p v-if="monthlyBudgets.warning_count > monthlyBudgets.warnings.length" class="dashboard-budget-insight__more">
+                  Y {{ monthlyBudgets.warning_count - monthlyBudgets.warnings.length }} categorías más requieren atención.
+                </p>
+              </div>
+              <p v-else class="dashboard-budget-insight__on-track">Tus presupuestos están bajo control.</p>
+            </div>
+            <div v-else class="dashboard-empty">
+              <span>Aún no tienes presupuestos para este mes.</span>
+              <RouterLink :to="{ name: 'finances-budgets' }" class="dashboard-empty__action">Ver presupuestos</RouterLink>
+            </div>
+          </template>
+        </Card>
+
         <Card class="dashboard-panel dashboard-finance-insight">
           <template #content>
             <header class="dashboard-panel__header">
@@ -298,11 +361,27 @@ const emptySummary = {
         net: 0,
         occurrence_count: 0,
       },
+      monthly_budgets: {
+        month: '',
+        total_budget_amount: 0,
+        total_spent_amount: 0,
+        total_remaining_amount: 0,
+        total_over_budget_amount: 0,
+        budget_count: 0,
+        warning_count: 0,
+        near_limit_count: 0,
+        limit_reached_count: 0,
+        exceeded_count: 0,
+        warnings: [],
+      },
     },
   },
 }
 
 const summary = computed(() => dashboardStore.summary ?? emptySummary)
+const monthlyBudgets = computed(
+  () => summary.value.finances.insights.monthly_budgets ?? emptySummary.finances.insights.monthly_budgets,
+)
 
 function formatPercentage(value) {
   return `${Number(value ?? 0).toFixed(2)}%`
@@ -314,6 +393,23 @@ function movementCountLabel(count) {
 
 function occurrenceCountLabel(count) {
   return `${count} ${count === 1 ? 'movimiento previsto' : 'movimientos previstos'}`
+}
+
+function budgetWarningLabel(status) {
+  const labels = {
+    near_limit: 'Cerca del límite',
+    limit_reached: 'Límite alcanzado',
+    exceeded: 'Excedido',
+  }
+  return labels[status] ?? ''
+}
+
+function budgetWarningClass(status) {
+  return 'dashboard-budget-warning__status--' + status
+}
+
+function progressWidth(usagePercentage) {
+  return String(Math.min(usagePercentage, 100)) + '%'
 }
 
 function formatSignedCurrency(value) {
@@ -338,12 +434,10 @@ function transactionAmountClass(type) {
 }
 
 onMounted(async () => {
-  if (!dashboardStore.summary) {
-    try {
-      await dashboardStore.fetchSummary()
-    } catch {
-      // The store exposes the request error for the dashboard alert.
-    }
+  try {
+    await dashboardStore.fetchSummary()
+  } catch {
+    // The store exposes the request error for the dashboard alert.
   }
 })
 </script>

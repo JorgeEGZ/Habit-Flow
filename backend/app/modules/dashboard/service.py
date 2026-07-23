@@ -8,10 +8,12 @@ from app.core.config import get_app_timezone, get_settings
 from app.modules.dashboard import repository as dashboard_repo
 from app.modules.dashboard.schemas import (
     DashboardAccountBalance,
+    DashboardBudgetWarning,
     DashboardFinanceInsights,
     DashboardFinances,
     DashboardGoalSummary,
     DashboardHabits,
+    DashboardMonthlyBudgets,
     DashboardRecentTransaction,
     DashboardSavings,
     DashboardSavingsProgress,
@@ -26,6 +28,68 @@ from app.modules.habits.models import FREQUENCY_DAILY, FREQUENCY_WEEKLY, TRACKIN
 from app.modules.savings.models import STATUS_ACTIVE, STATUS_COMPLETED
 
 RECENT_TRANSACTIONS_LIMIT = 5
+BUDGET_WARNING_LIMIT = 3
+BUDGET_WARNING_NEAR_LIMIT_PERCENTAGE = 80
+
+
+def _budget_warning_status(usage_percentage: float, *, exceeded: bool) -> str | None:
+    if exceeded:
+        return "exceeded"
+    if usage_percentage == 100:
+        return "limit_reached"
+    if usage_percentage >= BUDGET_WARNING_NEAR_LIMIT_PERCENTAGE:
+        return "near_limit"
+    return None
+
+
+def _dashboard_monthly_budgets(monthly_budgets) -> DashboardMonthlyBudgets:
+    status_order = {"exceeded": 0, "limit_reached": 1, "near_limit": 2}
+    warnings: list[DashboardBudgetWarning] = []
+    counts = {"near_limit": 0, "limit_reached": 0, "exceeded": 0}
+
+    for budget in monthly_budgets.budgets:
+        status = _budget_warning_status(
+            budget.usage_percentage,
+            exceeded=budget.exceeded,
+        )
+        if status is None:
+            continue
+        counts[status] += 1
+        warnings.append(
+            DashboardBudgetWarning(
+                budget_id=budget.budget_id,
+                category_id=budget.category_id,
+                category_name=budget.category_name,
+                budget_amount=budget.budget_amount,
+                spent_amount=budget.spent_amount,
+                remaining_amount=budget.remaining_amount,
+                over_budget_amount=budget.over_budget_amount,
+                usage_percentage=budget.usage_percentage,
+                status=status,
+            )
+        )
+
+    warnings.sort(
+        key=lambda item: (
+            status_order[item.status],
+            -item.usage_percentage,
+            item.category_name.casefold(),
+            str(item.category_id),
+        )
+    )
+    return DashboardMonthlyBudgets(
+        month=monthly_budgets.month,
+        total_budget_amount=monthly_budgets.total_budget_amount,
+        total_spent_amount=monthly_budgets.total_spent_amount,
+        total_remaining_amount=monthly_budgets.total_remaining_amount,
+        total_over_budget_amount=monthly_budgets.total_over_budget_amount,
+        budget_count=len(monthly_budgets.budgets),
+        warning_count=len(warnings),
+        near_limit_count=counts["near_limit"],
+        limit_reached_count=counts["limit_reached"],
+        exceeded_count=counts["exceeded"],
+        warnings=warnings[:BUDGET_WARNING_LIMIT],
+    )
 
 
 def current_app_date() -> date:
@@ -252,6 +316,13 @@ async def get_finances(
         month=today.strftime("%Y-%m"),
         today=today,
     )
+    monthly_budgets = await finances_service.get_monthly_budgets(
+        session,
+        user_id=user_id,
+        month=spending.month,
+        today=today,
+        spending_summary=spending,
+    )
     upcoming = await finances_service.get_upcoming_recurring(
         session,
         user_id=user_id,
@@ -308,6 +379,7 @@ async def get_finances(
                 len(group.occurrences) for group in upcoming.date_groups
             ),
         ),
+        monthly_budgets=_dashboard_monthly_budgets(monthly_budgets),
     )
 
     return DashboardFinances(

@@ -61,6 +61,12 @@ export const useDashboardStore = defineStore('dashboard', {
       this.error = ''
       try {
         this.finances = await dashboardService.getFinances()
+        if (this.summary) {
+          this.summary = {
+            ...this.summary,
+            finances: this.finances,
+          }
+        }
         return this.finances
       } catch (error) {
         this.error = getApiErrorMessage(error, 'No fue posible cargar las finanzas.')

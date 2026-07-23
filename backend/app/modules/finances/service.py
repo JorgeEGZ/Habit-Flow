@@ -426,6 +426,7 @@ async def get_monthly_budgets(
     user_id: uuid.UUID,
     month: str | None = None,
     today: date | None = None,
+    spending_summary: SpendingByCategoryRead | None = None,
 ) -> MonthlyCategoryBudgetsRead:
     selected_month, period_start, period_end = _spending_month_bounds(
         month,
@@ -436,12 +437,25 @@ async def get_monthly_budgets(
         user_id=user_id,
         month_start=period_start,
     )
-    spending_rows = await finances_repo.get_expense_spending_by_category(
-        session,
-        user_id=user_id,
-        period_start=period_start,
-        period_end=period_end,
-    )
+    if spending_summary is not None:
+        if spending_summary.month != selected_month:
+            raise ValueError("Spending summary month must match the budget month.")
+        spending_rows = [
+            (
+                item.category_id,
+                item.category_name,
+                item.amount,
+                item.transaction_count,
+            )
+            for item in spending_summary.categories
+        ]
+    else:
+        spending_rows = await finances_repo.get_expense_spending_by_category(
+            session,
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
     spending_by_category = {
         category_id: (amount, transaction_count)
         for category_id, _category_name, amount, transaction_count in spending_rows

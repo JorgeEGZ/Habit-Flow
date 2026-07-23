@@ -92,11 +92,41 @@ class DashboardUpcomingRecurring(BaseModel):
     occurrence_count: int = Field(ge=0)
 
 
+BudgetWarningStatus = Literal["near_limit", "limit_reached", "exceeded"]
+
+
+class DashboardBudgetWarning(BaseModel):
+    budget_id: uuid.UUID
+    category_id: uuid.UUID
+    category_name: str
+    budget_amount: int = Field(gt=0)
+    spent_amount: int = Field(ge=0)
+    remaining_amount: int = Field(ge=0)
+    over_budget_amount: int = Field(ge=0)
+    usage_percentage: float = Field(ge=0)
+    status: BudgetWarningStatus
+
+
+class DashboardMonthlyBudgets(BaseModel):
+    month: str
+    total_budget_amount: int = Field(ge=0)
+    total_spent_amount: int = Field(ge=0)
+    total_remaining_amount: int = Field(ge=0)
+    total_over_budget_amount: int = Field(ge=0)
+    budget_count: int = Field(ge=0)
+    warning_count: int = Field(ge=0)
+    near_limit_count: int = Field(ge=0)
+    limit_reached_count: int = Field(ge=0)
+    exceeded_count: int = Field(ge=0)
+    warnings: list[DashboardBudgetWarning]
+
+
 class DashboardFinanceInsights(BaseModel):
     as_of: date
     month: str
     top_spending_category: DashboardTopSpendingCategory | None = None
     upcoming_recurring: DashboardUpcomingRecurring
+    monthly_budgets: DashboardMonthlyBudgets
 
 
 class DashboardFinances(BaseModel):

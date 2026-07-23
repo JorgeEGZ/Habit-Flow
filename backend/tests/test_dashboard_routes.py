@@ -87,6 +87,19 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
                     "net": 0,
                     "occurrence_count": 0,
                 },
+                "monthly_budgets": {
+                    "month": date.today().strftime("%Y-%m"),
+                    "total_budget_amount": 0,
+                    "total_spent_amount": 0,
+                    "total_remaining_amount": 0,
+                    "total_over_budget_amount": 0,
+                    "budget_count": 0,
+                    "warning_count": 0,
+                    "near_limit_count": 0,
+                    "limit_reached_count": 0,
+                    "exceeded_count": 0,
+                    "warnings": [],
+                },
             },
         },
     }
@@ -107,6 +120,8 @@ async def test_dashboard_finance_insights_use_current_app_date(
     assert insights["month"] == "2026-07"
     assert insights["upcoming_recurring"]["period_start"] == "2026-07-22"
     assert insights["upcoming_recurring"]["period_end"] == "2026-08-20"
+    assert insights["monthly_budgets"]["month"] == "2026-07"
+    assert insights["monthly_budgets"]["budget_count"] == 0
 
 
 async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:
