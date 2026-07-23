@@ -15,6 +15,8 @@ export const useFinancesStore = defineStore('finances', {
     loadingSpendingByCategory: false,
     loadingMonthlyBudgets: false,
     loadingUpcomingRecurring: false,
+    registeringRecurringOccurrence: false,
+    recurringRegistrationError: '',
     submitting: false,
     error: '',
     spendingByCategory: null,
@@ -362,6 +364,26 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.submitting = false
+      }
+    },
+
+    async registerRecurringOccurrence(recurringId, payload) {
+      this.registeringRecurringOccurrence = true
+      this.recurringRegistrationError = ''
+      try {
+        return await financesService.registerRecurringOccurrence(recurringId, payload)
+      } catch (error) {
+        const code = error?.response?.data?.error?.code
+        const messages = {
+          recurring_occurrence_already_registered: 'Ya registraste un movimiento para esta regla en esa fecha.',
+          recurring_rule_inactive: 'Activa la regla antes de registrar un movimiento.',
+          recurring_date_not_scheduled: 'La fecha seleccionada no corresponde a una ocurrencia de esta regla.',
+          recurring_transaction_not_found: 'La regla recurrente no existe o ya fue eliminada.',
+        }
+        this.recurringRegistrationError = messages[code] ?? 'No fue posible registrar el movimiento.'
+        throw new Error(this.recurringRegistrationError)
+      } finally {
+        this.registeringRecurringOccurrence = false
       }
     },
   },

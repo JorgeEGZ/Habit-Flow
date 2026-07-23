@@ -111,6 +111,24 @@ class RecurringTransactionNotFound(DomainError):
     message = "Recurring transaction not found."
 
 
+class RecurringOccurrenceAlreadyRegistered(DomainError):
+    code = "recurring_occurrence_already_registered"
+    status_code = 409
+    message = "This recurring occurrence has already been registered."
+
+
+class RecurringRuleInactive(DomainError):
+    code = "recurring_rule_inactive"
+    status_code = 400
+    message = "Recurring transaction must be active."
+
+
+class RecurringDateNotScheduled(DomainError):
+    code = "recurring_date_not_scheduled"
+    status_code = 400
+    message = "Transaction date is not a scheduled recurring occurrence."
+
+
 class MonthlyBudgetNotFound(DomainError):
     code = "monthly_budget_not_found"
     status_code = 404

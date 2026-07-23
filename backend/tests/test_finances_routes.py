@@ -49,6 +49,14 @@ async def test_upcoming_recurring_requires_bearer(client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
+async def test_recurring_registration_requires_bearer(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/finances/recurring/00000000-0000-0000-0000-000000000000/registrations",
+        json={"transaction_date": "2026-07-25"},
+    )
+    assert response.status_code == 401
+
+
 @pytest.mark.parametrize("days", [1, 8, 29, 31, "invalid"])
 async def test_upcoming_recurring_rejects_invalid_days(
     client: AsyncClient,

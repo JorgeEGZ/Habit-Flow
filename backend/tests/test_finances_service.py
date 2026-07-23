@@ -11,6 +11,9 @@ from app.core.exceptions import (
     BudgetRequiresExpenseCategory,
     CategoryNotFound,
     MonthlyBudgetAlreadyExists,
+    RecurringDateNotScheduled,
+    RecurringOccurrenceAlreadyRegistered,
+    RecurringRuleInactive,
     RecurringTransactionNotFound,
     ResourceInUse,
     TransactionNotFound,
@@ -26,6 +29,7 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetCreate,
     MonthlyCategoryBudgetUpdate,
     RecurringTransactionCreate,
+    RecurringOccurrenceRegistrationCreate,
     RecurringTransactionUpdate,
     TransactionCreate,
     TransactionUpdate,
@@ -745,3 +749,99 @@ async def test_recurring_crud_and_ownership(session: AsyncSession) -> None:
     await finances_service.delete_recurring(session, user_id=alice.id, recurring_id=rule.id)
     with pytest.raises(RecurringTransactionNotFound):
         await finances_service.get_recurring(session, user_id=alice.id, recurring_id=rule.id)
+
+
+async def test_manual_recurring_registration_snapshots_rule_and_marks_projection(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "registration-owner@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    category = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Rent", type="expense")
+    )
+    rule = await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(
+            account_id=account.id, category_id=category.id, type="expense", amount=900,
+            description="Rule description", frequency="monthly", start_date=date(2026, 1, 31),
+            end_date=None, is_active=True,
+        ),
+    )
+
+    registered = await finances_service.register_recurring_occurrence(
+        session,
+        user_id=user.id,
+        recurring_id=rule.id,
+        payload=RecurringOccurrenceRegistrationCreate(
+            transaction_date=date(2026, 2, 28), description="  February rent  "
+        ),
+    )
+
+    assert registered.transaction.account_id == account.id
+    assert registered.transaction.category_id == category.id
+    assert registered.transaction.amount == 900
+    assert registered.transaction.description == "February rent"
+    assert rule.last_generated_at is None
+    projection = await finances_service.get_upcoming_recurring(
+        session, user_id=user.id, days=7, today=date(2026, 2, 28)
+    )
+    occurrence = projection.date_groups[0].occurrences[0]
+    assert occurrence.is_registered is True
+    assert occurrence.transaction_id == registered.transaction.id
+
+    with pytest.raises(RecurringOccurrenceAlreadyRegistered):
+        await finances_service.register_recurring_occurrence(
+            session,
+            user_id=user.id,
+            recurring_id=rule.id,
+            payload=RecurringOccurrenceRegistrationCreate(transaction_date=date(2026, 2, 28)),
+        )
+
+    await finances_service.delete_transaction(
+        session, user_id=user.id, transaction_id=registered.transaction.id
+    )
+    rerun = await finances_service.register_recurring_occurrence(
+        session,
+        user_id=user.id,
+        recurring_id=rule.id,
+        payload=RecurringOccurrenceRegistrationCreate(transaction_date=date(2026, 2, 28)),
+    )
+    assert rerun.transaction.description == "Rule description"
+
+
+async def test_manual_recurring_registration_rejects_inactive_and_unscheduled_dates(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "registration-validation@example.com")
+    account = await finances_service.create_account(
+        session, user_id=user.id, payload=AccountCreate(name="Cash", type="cash", initial_balance=0)
+    )
+    category = await finances_service.create_category(
+        session, user_id=user.id, payload=CategoryCreate(name="Food", type="expense")
+    )
+    rule = await finances_service.create_recurring(
+        session,
+        user_id=user.id,
+        payload=RecurringTransactionCreate(
+            account_id=account.id, category_id=category.id, type="expense", amount=10,
+            description=None, frequency="weekly", start_date=date(2026, 7, 18),
+            end_date=None, is_active=True,
+        ),
+    )
+    with pytest.raises(RecurringDateNotScheduled):
+        await finances_service.register_recurring_occurrence(
+            session, user_id=user.id, recurring_id=rule.id,
+            payload=RecurringOccurrenceRegistrationCreate(transaction_date=date(2026, 7, 22)),
+        )
+    await finances_service.update_recurring(
+        session, user_id=user.id, recurring_id=rule.id,
+        payload=RecurringTransactionUpdate(is_active=False),
+    )
+    with pytest.raises(RecurringRuleInactive):
+        await finances_service.register_recurring_occurrence(
+            session, user_id=user.id, recurring_id=rule.id,
+            payload=RecurringOccurrenceRegistrationCreate(transaction_date=date(2026, 7, 25)),
+        )

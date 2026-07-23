@@ -21,6 +21,8 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
     RecurringTransactionCreate,
+    RecurringOccurrenceRegistrationCreate,
+    RecurringOccurrenceRegistrationRead,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
     SpendingByCategoryRead,
@@ -499,6 +501,25 @@ async def create_recurring(
         session, user_id=user.id, payload=payload
     )
     return RecurringTransactionRead.model_validate(recurring)
+
+
+@router.post(
+    "/recurring/{recurring_id}/registrations",
+    response_model=RecurringOccurrenceRegistrationRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_recurring_occurrence(
+    recurring_id: uuid.UUID,
+    payload: RecurringOccurrenceRegistrationCreate,
+    session: DbSession,
+    user: CurrentUser,
+) -> RecurringOccurrenceRegistrationRead:
+    return await finances_service.register_recurring_occurrence(
+        session,
+        user_id=user.id,
+        recurring_id=recurring_id,
+        payload=payload,
+    )
 
 
 @router.get("/recurring/{recurring_id}", response_model=RecurringTransactionRead)

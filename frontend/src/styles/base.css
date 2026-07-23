@@ -3212,6 +3212,51 @@ svg {
   min-width: 0;
 }
 
+.finance-upcoming-occurrence__action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.finance-registration-summary {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.75rem;
+  background: rgba(22, 33, 48, 0.42);
+}
+
+.finance-registration-summary span,
+.finance-registration-summary p {
+  margin: 0;
+  color: var(--app-text-muted);
+}
+
+.finance-registration-summary strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.finance-upcoming-insight__success {
+  margin: 0.8rem 0 0;
+  color: var(--app-success);
+  font-weight: 700;
+}
+
+@media (max-width: 560px) {
+  .finance-upcoming-occurrence {
+    flex-wrap: wrap;
+  }
+
+  .finance-upcoming-occurrence__main {
+    flex: 1 1 100%;
+  }
+
+  .finance-upcoming-occurrence__action {
+    margin-left: auto;
+  }
+}
+
 .finance-upcoming-occurrence__main strong,
 .finance-upcoming-occurrence__main span {
   overflow: hidden;

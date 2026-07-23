@@ -284,3 +284,26 @@ The `dashboard` module is read-only. It composes aggregates from habits, savings
 - New module files: `app/modules/dashboard/{models,schemas,repository,service,routes}.py`.
 - The dashboard layer depends on existing modules for data, but does not write any data itself.
 - Future caching can be added around the service layer without changing the response contract.
+
+---
+
+## 013 - Manual recurring occurrence registrations (2026-07-23, accepted)
+
+Recurring rules remain declarative. A user may explicitly materialize one scheduled occurrence as a real transaction, but the application does not schedule or generate transactions automatically.
+
+**Why:** Users need a safe way to record a recurring payment or income when it happens without introducing background execution, retries, or accidental duplicate movements.
+
+**How it works:**
+
+- `recurring_transaction_registrations` binds one immutable `occurrence_date` to one transaction and one recurring rule.
+- The database unique constraint on `(recurring_id, occurrence_date)` is authoritative for duplicate prevention; transaction and registration creation commit atomically.
+- The transaction snapshots the rule classification and amount. Later transaction edits do not modify the registered occurrence.
+- Registration accepts only dates produced by the existing daily, weekly, and monthly recurrence calculation. It never changes `last_generated_at`.
+- Deleting a generated transaction cascades its registration, allowing that occurrence to be registered again. Deleting a recurring rule is blocked while registrations exist.
+- Upcoming projections remain read-only and expose registration state without altering their totals.
+
+**Consequences:**
+
+- No scheduler, cron job, or notification system is introduced.
+- Real generated transactions naturally participate in balances, budgets, insights, dashboard summaries, and exports.
+- The frontend exposes registration only from projected occurrences, not from the recurring-rule management table.
