@@ -15,12 +15,12 @@ export function assertLocalWritableTarget() {
   }
 }
 
-export function getRenderCredentials() {
+export function getRemoteCredentials() {
   const email = process.env.E2E_EMAIL
   const password = process.env.E2E_PASSWORD
 
   if (!email || !password) {
-    throw new Error('E2E_EMAIL y E2E_PASSWORD son obligatorios para ejecutar pruebas contra Render.')
+    throw new Error('E2E_EMAIL y E2E_PASSWORD son obligatorios para ejecutar pruebas remotas.')
   }
 
   return { email, password }

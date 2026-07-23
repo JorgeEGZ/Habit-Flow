@@ -3,7 +3,7 @@ import { expect } from '@playwright/test'
 import { createLocalUser } from './data.js'
 import {
   assertLocalWritableTarget,
-  getRenderCredentials,
+  getRemoteCredentials,
   isLocalTarget,
 } from './environment.js'
 
@@ -39,7 +39,7 @@ export async function authenticate(page) {
     return registerLocalUser(page)
   }
 
-  const user = getRenderCredentials()
+  const user = getRemoteCredentials()
   await login(page, user)
   return user
 }

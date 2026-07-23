@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements/base.txt
 
 COPY . .
 
-RUN chmod +x /app/start.sh
+RUN chmod +x /app/start.sh /app/migrate.sh
 
 CMD ["sh", "/app/start.sh"]
