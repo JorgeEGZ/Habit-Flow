@@ -57,3 +57,14 @@ directly on the host, set backend/.env with:
 Verify the local API after Compose starts:
 
     curl http://localhost:8000/api/v1/health
+
+## Continuous Integration
+
+GitHub Actions runs required backend, frontend-build, and local Playwright
+checks for pull requests to `main` and pushes to `main`. The backend job runs
+Alembic against PostgreSQL; the existing backend test suite keeps its isolated
+SQLite fixtures.
+
+Render read-only smoke tests are intentionally manual/deferred. A future
+workflow will require `RENDER_BASE_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` as
+repository or environment secrets; do not commit these values.
