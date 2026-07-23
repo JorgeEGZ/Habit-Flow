@@ -216,3 +216,102 @@ async def test_contributions_other_user_returns_404(client: AsyncClient) -> None
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "saving_goal_not_found"
+
+
+async def test_update_and_delete_contribution_with_ownership_isolation(
+    client: AsyncClient,
+) -> None:
+    alice_token = await _register_and_login(client, email="sg9a@example.com")
+    bob_token = await _register_and_login(client, email="sg9b@example.com")
+    created = await client.post(
+        "/api/v1/savings/goals",
+        headers=_auth_headers(alice_token),
+        json={"name": "Mine", "target_amount": 100},
+    )
+    goal_id = created.json()["id"]
+    contribution = await client.post(
+        f"/api/v1/savings/goals/{goal_id}/contributions",
+        headers=_auth_headers(alice_token),
+        json={"amount": 100, "note": "  First  ", "contribution_date": "2026-06-17"},
+    )
+    contribution_id = contribution.json()["id"]
+
+    unknown_field = await client.patch(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+        json={"goal_id": goal_id},
+    )
+    assert unknown_field.status_code == 422
+
+    empty_update = await client.patch(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+        json={},
+    )
+    assert empty_update.status_code == 422
+
+    other_user = await client.patch(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(bob_token),
+        json={"amount": 50},
+    )
+    assert other_user.status_code == 404
+    assert other_user.json()["error"]["code"] == "saving_contribution_not_found"
+
+    other_goal = await client.post(
+        "/api/v1/savings/goals",
+        headers=_auth_headers(alice_token),
+        json={"name": "Other", "target_amount": 100},
+    )
+    mismatched_goal = await client.patch(
+        f"/api/v1/savings/goals/{other_goal.json()['id']}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+        json={"amount": 50},
+    )
+    assert mismatched_goal.status_code == 404
+    assert mismatched_goal.json()["error"]["code"] == "saving_contribution_not_found"
+
+    updated = await client.patch(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+        json={"amount": 50, "note": "   ", "contribution_date": "2026-06-16"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["amount"] == 50
+    assert updated.json()["note"] is None
+    assert updated.json()["contribution_date"] == "2026-06-16"
+
+    progress = await client.get(
+        f"/api/v1/savings/goals/{goal_id}/progress", headers=_auth_headers(alice_token)
+    )
+    assert progress.json()["current_amount"] == 50
+    assert progress.json()["status"] == "active"
+
+    deleted = await client.delete(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+    )
+    assert deleted.status_code == 204
+
+    missing = await client.delete(
+        f"/api/v1/savings/goals/{goal_id}/contributions/{contribution_id}",
+        headers=_auth_headers(alice_token),
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "saving_contribution_not_found"
+
+
+async def test_contribution_rejects_future_date(client: AsyncClient) -> None:
+    token = await _register_and_login(client, email="sg10@example.com")
+    created = await client.post(
+        "/api/v1/savings/goals",
+        headers=_auth_headers(token),
+        json={"name": "Goal", "target_amount": 100},
+    )
+    response = await client.post(
+        f"/api/v1/savings/goals/{created.json()['id']}/contributions",
+        headers=_auth_headers(token),
+        json={"amount": 10, "contribution_date": "2999-01-01"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "validation_error"

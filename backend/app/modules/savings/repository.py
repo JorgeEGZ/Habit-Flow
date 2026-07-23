@@ -124,9 +124,66 @@ async def create_contribution(
         contribution_date=contribution_date,
     )
     session.add(record)
-    await session.commit()
-    await session.refresh(record)
+    await session.flush()
     return record
+
+
+async def get_contribution_for_goal_and_user(
+    session: AsyncSession,
+    *,
+    saving_goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> tuple[SavingContribution, SavingGoal] | None:
+    stmt = (
+        select(SavingContribution, SavingGoal)
+        .join(SavingGoal, SavingGoal.id == SavingContribution.saving_goal_id)
+        .where(
+            SavingContribution.id == contribution_id,
+            SavingContribution.saving_goal_id == saving_goal_id,
+            SavingGoal.user_id == user_id,
+        )
+    )
+    result = await session.execute(stmt)
+    row = result.first()
+    if not row:
+        return None
+    return row[0], row[1]
+
+
+async def get_contribution_total_for_goal_and_user(
+    session: AsyncSession,
+    *,
+    saving_goal_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> int:
+    stmt = (
+        select(func.coalesce(func.sum(SavingContribution.amount), 0))
+        .join(SavingGoal, SavingGoal.id == SavingContribution.saving_goal_id)
+        .where(
+            SavingContribution.saving_goal_id == saving_goal_id,
+            SavingGoal.user_id == user_id,
+        )
+    )
+    result = await session.execute(stmt)
+    return int(result.scalar_one() or 0)
+
+
+async def update_contribution(
+    session: AsyncSession,
+    contribution: SavingContribution,
+    *,
+    fields: dict,
+) -> SavingContribution:
+    for key, value in fields.items():
+        setattr(contribution, key, value)
+    await session.flush()
+    return contribution
+
+
+async def delete_contribution(session: AsyncSession, contribution: SavingContribution) -> None:
+    await session.delete(contribution)
+    await session.flush()
 
 
 async def list_contributions_for_goal(

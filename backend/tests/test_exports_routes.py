@@ -219,3 +219,81 @@ async def test_savings_exports_include_aggregated_contributions(client: AsyncCli
     workbook = load_workbook(BytesIO(xlsx_response.content))
     assert workbook.active["A2"].value == "'=Trip"
     assert workbook.active["D2"].value == 400
+
+
+async def test_goal_contribution_exports_are_scoped_and_sanitize_notes(
+    client: AsyncClient,
+) -> None:
+    owner = await _register_and_login(client, "contribution-export-owner@example.com")
+    other = await _register_and_login(client, "contribution-export-other@example.com")
+    created = await client.post(
+        "/api/v1/savings/goals",
+        headers=_headers(owner),
+        json={"name": "Trip", "target_amount": 1000},
+    )
+    goal_id = created.json()["id"]
+    await client.post(
+        f"/api/v1/savings/goals/{goal_id}/contributions",
+        headers=_headers(owner),
+        json={"amount": 400, "note": "=Unsafe", "contribution_date": "2026-07-10"},
+    )
+
+    unauthenticated = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.csv"
+    )
+    assert unauthenticated.status_code == 401
+
+    other_user = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.csv",
+        headers=_headers(other),
+    )
+    assert other_user.status_code == 404
+
+    csv_response = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.csv",
+        headers=_headers(owner),
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.headers["cache-control"] == "private, no-store"
+    assert csv_response.headers["content-disposition"].endswith(
+        f'habitflow-savings-contributions-{goal_id}-2026-07-23.csv"'
+    )
+    rows = _csv_rows(csv_response)
+    assert rows[0] == [
+        "goal_name", "contribution_date", "amount", "note", "contribution_id",
+        "goal_id", "created_at", "updated_at",
+    ]
+    assert rows[1][0:4] == ["Trip", "2026-07-10", "400", "'=Unsafe"]
+
+    xlsx_response = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.xlsx",
+        headers=_headers(owner),
+    )
+    workbook = load_workbook(BytesIO(xlsx_response.content))
+    assert workbook.active["D2"].value == "'=Unsafe"
+
+
+async def test_empty_goal_contribution_exports_include_headers(client: AsyncClient) -> None:
+    token = await _register_and_login(client, "empty-contribution-export@example.com")
+    created = await client.post(
+        "/api/v1/savings/goals",
+        headers=_headers(token),
+        json={"name": "Empty", "target_amount": 1000},
+    )
+    goal_id = created.json()["id"]
+
+    csv_response = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.csv",
+        headers=_headers(token),
+    )
+    assert _csv_rows(csv_response) == [[
+        "goal_name", "contribution_date", "amount", "note", "contribution_id",
+        "goal_id", "created_at", "updated_at",
+    ]]
+
+    xlsx_response = await client.get(
+        f"/api/v1/savings/exports/goals/{goal_id}/contributions.xlsx",
+        headers=_headers(token),
+    )
+    workbook = load_workbook(BytesIO(xlsx_response.content))
+    assert workbook.active.max_row == 1
