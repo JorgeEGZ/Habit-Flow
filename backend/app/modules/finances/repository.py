@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import asc, case, desc, func, select
+from sqlalchemy import asc, case, delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.finances.models import (
@@ -12,6 +12,7 @@ from app.modules.finances.models import (
     Account,
     Category,
     MonthlyCategoryBudget,
+    RecurringTransactionRegistration,
     RecurringTransaction,
     Transaction,
 )
@@ -439,8 +440,50 @@ async def update_transaction(
 
 
 async def delete_transaction(session: AsyncSession, transaction: Transaction) -> None:
+    # Keep re-registration possible even on test engines without FK cascades enabled.
+    await session.execute(
+        delete(RecurringTransactionRegistration).where(
+            RecurringTransactionRegistration.transaction_id == transaction.id
+        )
+    )
     await session.delete(transaction)
     await session.commit()
+
+
+async def create_registered_recurring_transaction(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    recurring_id: uuid.UUID,
+    occurrence_date: date,
+    account_id: uuid.UUID,
+    category_id: uuid.UUID,
+    type: str,
+    amount: int,
+    description: str | None,
+) -> Transaction:
+    transaction = Transaction(
+        user_id=user_id,
+        account_id=account_id,
+        category_id=category_id,
+        type=type,
+        amount=amount,
+        description=description,
+        transaction_date=occurrence_date,
+    )
+    session.add(transaction)
+    await session.flush()
+    session.add(
+        RecurringTransactionRegistration(
+            transaction_id=transaction.id,
+            recurring_id=recurring_id,
+            occurrence_date=occurrence_date,
+        )
+    )
+    await session.flush()
+    await session.commit()
+    await session.refresh(transaction)
+    return transaction
 
 
 async def get_expense_spending_by_category(
@@ -531,6 +574,58 @@ async def list_active_recurring_overlapping_window(
     )
     result = await session.execute(stmt)
     return [(row[0], row[1], row[2]) for row in result.all()]
+
+
+async def get_recurring_registration(
+    session: AsyncSession,
+    *,
+    recurring_id: uuid.UUID,
+    occurrence_date: date,
+) -> RecurringTransactionRegistration | None:
+    result = await session.execute(
+        select(RecurringTransactionRegistration).where(
+            RecurringTransactionRegistration.recurring_id == recurring_id,
+            RecurringTransactionRegistration.occurrence_date == occurrence_date,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_recurring_registrations_for_window(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    period_start: date,
+    period_end: date,
+) -> list[tuple[uuid.UUID, date, uuid.UUID]]:
+    stmt = (
+        select(
+            RecurringTransactionRegistration.recurring_id,
+            RecurringTransactionRegistration.occurrence_date,
+            RecurringTransactionRegistration.transaction_id,
+        )
+        .join(
+            RecurringTransaction,
+            RecurringTransaction.id == RecurringTransactionRegistration.recurring_id,
+        )
+        .where(
+            RecurringTransaction.user_id == user_id,
+            RecurringTransactionRegistration.occurrence_date >= period_start,
+            RecurringTransactionRegistration.occurrence_date <= period_end,
+        )
+    )
+    return [tuple(row) for row in (await session.execute(stmt)).all()]
+
+
+async def count_recurring_registrations(
+    session: AsyncSession, *, recurring_id: uuid.UUID
+) -> int:
+    result = await session.execute(
+        select(func.count(RecurringTransactionRegistration.transaction_id)).where(
+            RecurringTransactionRegistration.recurring_id == recurring_id
+        )
+    )
+    return int(result.scalar_one())
 
 
 async def create_recurring(

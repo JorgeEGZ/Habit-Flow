@@ -225,3 +225,36 @@ class RecurringTransaction(UUIDPrimaryKeyMixin, TimestampedMixin, Base):
         Index("ix_recurring_transactions_account_id", "account_id"),
         Index("ix_recurring_transactions_category_id", "category_id"),
     )
+
+
+class RecurringTransactionRegistration(Base):
+    __tablename__ = "recurring_transaction_registrations"
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("transactions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    recurring_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("recurring_transactions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "recurring_id",
+            "occurrence_date",
+            name="uq_recurring_transaction_registrations_recurring_occurrence",
+        ),
+        Index(
+            "ix_recurring_transaction_registrations_recurring_occurrence",
+            "recurring_id",
+            "occurrence_date",
+        ),
+        Index("ix_recurring_transaction_registrations_occurrence_date", "occurrence_date"),
+    )

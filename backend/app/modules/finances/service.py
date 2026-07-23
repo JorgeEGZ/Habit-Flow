@@ -14,6 +14,9 @@ from app.core.exceptions import (
     CategoryNotFound,
     MonthlyBudgetAlreadyExists,
     MonthlyBudgetNotFound,
+    RecurringDateNotScheduled,
+    RecurringOccurrenceAlreadyRegistered,
+    RecurringRuleInactive,
     RecurringTransactionNotFound,
     ResourceInUse,
     TransactionNotFound,
@@ -41,6 +44,8 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
     RecurringTransactionCreate,
+    RecurringOccurrenceRegistrationCreate,
+    RecurringOccurrenceRegistrationRead,
     RecurringTransactionRead,
     RecurringTransactionUpdate,
     SpendingByCategoryItem,
@@ -777,6 +782,15 @@ async def get_upcoming_recurring(
         period_start=period_start,
         period_end=period_end,
     )
+    registrations = {
+        (recurring_id, occurrence_date): transaction_id
+        for recurring_id, occurrence_date, transaction_id in await finances_repo.list_recurring_registrations_for_window(
+            session,
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    }
     grouped: dict[date, list[UpcomingRecurringOccurrence]] = {}
 
     for recurring, account_name, category_name in rules:
@@ -785,6 +799,7 @@ async def get_upcoming_recurring(
             period_start=period_start,
             period_end=period_end,
         ):
+            transaction_id = registrations.get((recurring.id, occurrence_date))
             grouped.setdefault(occurrence_date, []).append(
                 UpcomingRecurringOccurrence(
                     recurring_id=recurring.id,
@@ -797,6 +812,8 @@ async def get_upcoming_recurring(
                     amount=recurring.amount,
                     description=recurring.description,
                     frequency=recurring.frequency,
+                    is_registered=transaction_id is not None,
+                    transaction_id=transaction_id,
                 )
             )
 
@@ -915,4 +932,52 @@ async def delete_recurring(session, *, user_id: uuid.UUID, recurring_id: uuid.UU
     recurring = await _get_recurring_or_404(
         session, user_id=user_id, recurring_id=recurring_id
     )
+    if await finances_repo.count_recurring_registrations(session, recurring_id=recurring.id):
+        raise ResourceInUse("Recurring transaction has registered occurrences.")
     await finances_repo.delete_recurring(session, recurring)
+
+
+async def register_recurring_occurrence(
+    session,
+    *,
+    user_id: uuid.UUID,
+    recurring_id: uuid.UUID,
+    payload: RecurringOccurrenceRegistrationCreate,
+) -> RecurringOccurrenceRegistrationRead:
+    recurring = await _get_recurring_or_404(session, user_id=user_id, recurring_id=recurring_id)
+    if not recurring.is_active:
+        raise RecurringRuleInactive()
+    if payload.transaction_date not in _recurring_occurrence_dates(
+        recurring,
+        period_start=payload.transaction_date,
+        period_end=payload.transaction_date,
+    ):
+        raise RecurringDateNotScheduled()
+    if await finances_repo.get_recurring_registration(
+        session, recurring_id=recurring.id, occurrence_date=payload.transaction_date
+    ):
+        raise RecurringOccurrenceAlreadyRegistered()
+
+    description = recurring.description
+    if "description" in payload.model_fields_set:
+        description = payload.description.strip() if payload.description and payload.description.strip() else None
+    try:
+        transaction = await finances_repo.create_registered_recurring_transaction(
+            session,
+            user_id=user_id,
+            recurring_id=recurring.id,
+            occurrence_date=payload.transaction_date,
+            account_id=recurring.account_id,
+            category_id=recurring.category_id,
+            type=recurring.type,
+            amount=recurring.amount,
+            description=description,
+        )
+    except IntegrityError as error:
+        await session.rollback()
+        raise RecurringOccurrenceAlreadyRegistered() from error
+    return RecurringOccurrenceRegistrationRead(
+        recurring_id=recurring.id,
+        occurrence_date=payload.transaction_date,
+        transaction=TransactionRead.model_validate(transaction),
+    )

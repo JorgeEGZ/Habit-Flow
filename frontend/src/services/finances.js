@@ -133,3 +133,8 @@ export async function updateRecurringTransaction(recurringId, payload) {
 export async function deleteRecurringTransaction(recurringId) {
   await api.delete(`/finances/recurring/${recurringId}`)
 }
+
+export async function registerRecurringOccurrence(recurringId, payload) {
+  const { data } = await api.post(`/finances/recurring/${recurringId}/registrations`, payload)
+  return data
+}

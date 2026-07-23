@@ -178,6 +178,19 @@ class RecurringTransactionRead(RecurringTransactionBase):
     updated_at: datetime
 
 
+class RecurringOccurrenceRegistrationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transaction_date: date
+    description: str | None = Field(default=None, max_length=255)
+
+
+class RecurringOccurrenceRegistrationRead(BaseModel):
+    recurring_id: uuid.UUID
+    occurrence_date: date
+    transaction: TransactionRead
+
+
 class AccountBalance(BaseModel):
     account_id: uuid.UUID
     current_balance: int
@@ -217,6 +230,8 @@ class UpcomingRecurringOccurrence(BaseModel):
     amount: int = Field(gt=0)
     description: str | None
     frequency: RecurringFrequency
+    is_registered: bool = False
+    transaction_id: uuid.UUID | None = None
 
 
 class UpcomingRecurringDateGroup(BaseModel):

@@ -258,6 +258,10 @@
             </div>
           </header>
 
+          <p v-if="recurringRegistrationSuccess" class="finance-upcoming-insight__success" role="status">
+            {{ recurringRegistrationSuccess }}
+          </p>
+
           <div v-if="financesStore.loadingUpcomingRecurring" class="finance-upcoming-skeleton" aria-label="Cargando próximos movimientos">
             <span v-for="index in 4" :key="index" class="finance-upcoming-skeleton__row"></span>
           </div>
@@ -287,6 +291,19 @@
                   <div class="finance-upcoming-occurrence__amount">
                     <span class="finance-upcoming-occurrence__type" :class="transactionAmountClass(occurrence.type)">{{ transactionTypeLabel(occurrence.type) }}</span>
                     <strong :class="transactionAmountClass(occurrence.type)">{{ formatTransactionAmount(occurrence) }}</strong>
+                  </div>
+                  <div class="finance-upcoming-occurrence__action">
+                    <span v-if="occurrence.is_registered" class="recurring-status-pill recurring-status-pill--active">Registrado</span>
+                    <Button
+                      v-else
+                      type="button"
+                      label="Registrar ahora"
+                      icon="pi pi-check"
+                      severity="secondary"
+                      variant="outlined"
+                      class="app-button app-button--compact"
+                      @click="openRecurringRegistrationDialog(occurrence)"
+                    />
                   </div>
                 </article>
               </section>
@@ -611,6 +628,37 @@
     </Dialog>
 
     <Dialog
+      v-model:visible="showRecurringRegistrationDialog"
+      modal
+      dismissableMask
+      class="app-dialog"
+      header="Registrar movimiento"
+    >
+      <p class="finance-panel__subtitle">Se creará un movimiento real y actualizará tus saldos y presupuestos.</p>
+      <p v-if="recurringRegistrationError" class="dashboard-page__alert finance-panel__alert">{{ recurringRegistrationError }}</p>
+      <form id="recurring-registration-form" class="finance-form" @submit.prevent="handleRecurringRegistration">
+        <div v-if="selectedUpcomingOccurrence" class="finance-registration-summary">
+          <span>{{ transactionTypeLabel(selectedUpcomingOccurrence.type) }}</span>
+          <strong :class="transactionAmountClass(selectedUpcomingOccurrence.type)">{{ formatTransactionAmount(selectedUpcomingOccurrence) }}</strong>
+          <p>{{ selectedUpcomingOccurrence.account_name }} · {{ selectedUpcomingOccurrence.category_name }}</p>
+        </div>
+        <label class="finance-field">
+          <span>Fecha del movimiento</span>
+          <input v-model="recurringRegistrationForm.transactionDate" class="finance-input" type="date" required />
+        </label>
+        <label class="finance-field">
+          <span>Descripción</span>
+          <textarea v-model="recurringRegistrationForm.description" class="finance-input finance-textarea" rows="3" placeholder="Opcional" />
+        </label>
+        <p class="finance-panel__hint">La fecha debe corresponder a una ocurrencia programada de esta regla.</p>
+      </form>
+      <template #footer>
+        <Button type="submit" form="recurring-registration-form" label="Registrar movimiento" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.registeringRecurringOccurrence" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.registeringRecurringOccurrence" @click="resetRecurringRegistration" />
+      </template>
+    </Dialog>
+
+    <Dialog
       v-model:visible="showMonthlyBudgetDialog"
       modal
       dismissableMask
@@ -798,12 +846,15 @@ const showAccountDialog = ref(false)
 const showCategoryDialog = ref(false)
 const showTransactionDialog = ref(false)
 const showRecurringDialog = ref(false)
+const showRecurringRegistrationDialog = ref(false)
 const showMonthlyBudgetDialog = ref(false)
 const showTransactionExportDialog = ref(false)
 const accountFormError = ref('')
 const categoryFormError = ref('')
 const transactionFormError = ref('')
 const recurringFormError = ref('')
+const recurringRegistrationError = ref('')
+const recurringRegistrationSuccess = ref('')
 const monthlyBudgetFormError = ref('')
 const transactionExportError = ref('')
 const exportingTransactionFormat = ref('')
@@ -853,6 +904,12 @@ const recurringForm = reactive({
   endDate: '',
   isActive: true,
 })
+
+const recurringRegistrationForm = reactive({
+  transactionDate: '',
+  description: '',
+})
+const selectedUpcomingOccurrence = ref(null)
 
 const monthlyBudgetForm = reactive({
   categoryId: '',
@@ -1255,6 +1312,14 @@ function resetRecurringForm() {
   showRecurringDialog.value = false
 }
 
+function resetRecurringRegistration() {
+  selectedUpcomingOccurrence.value = null
+  recurringRegistrationForm.transactionDate = ''
+  recurringRegistrationForm.description = ''
+  recurringRegistrationError.value = ''
+  showRecurringRegistrationDialog.value = false
+}
+
 function resetMonthlyBudgetForm() {
   editingMonthlyBudgetId.value = ''
   monthlyBudgetForm.categoryId = ''
@@ -1354,6 +1419,15 @@ async function handleMonthlyBudgetExport(format) {
 function openCreateRecurringDialog() {
   resetRecurringForm()
   showRecurringDialog.value = true
+}
+
+function openRecurringRegistrationDialog(occurrence) {
+  selectedUpcomingOccurrence.value = occurrence
+  recurringRegistrationForm.transactionDate = String(occurrence.occurrence_date).slice(0, 10)
+  recurringRegistrationForm.description = occurrence.description ?? ''
+  recurringRegistrationError.value = ''
+  recurringRegistrationSuccess.value = ''
+  showRecurringRegistrationDialog.value = true
 }
 
 function openCreateMonthlyBudgetDialog() {
@@ -1740,6 +1814,34 @@ async function handleRecurringSubmit() {
     resetRecurringForm()
   } catch (error) {
     recurringFormError.value = error instanceof Error ? error.message : 'Revisa los datos e inténtalo de nuevo.'
+  }
+}
+
+async function handleRecurringRegistration() {
+  const occurrence = selectedUpcomingOccurrence.value
+  if (!occurrence || !recurringRegistrationForm.transactionDate) {
+    recurringRegistrationError.value = 'La fecha seleccionada no corresponde a una ocurrencia de esta regla.'
+    return
+  }
+
+  recurringRegistrationError.value = ''
+  try {
+    await financesStore.registerRecurringOccurrence(occurrence.recurring_id, {
+      transaction_date: recurringRegistrationForm.transactionDate,
+      description: recurringRegistrationForm.description.trim() || null,
+    })
+    await Promise.all([
+      loadUpcomingRecurring(),
+      financesStore.fetchTransactions(),
+      financesStore.fetchAccounts(),
+    ])
+    const month = recurringRegistrationForm.transactionDate.slice(0, 7)
+    if (spendingMonth.value === month) await loadSpendingByCategory(month)
+    if (budgetMonth.value === month) await loadMonthlyBudgets(month)
+    resetRecurringRegistration()
+    recurringRegistrationSuccess.value = 'Movimiento registrado correctamente.'
+  } catch (error) {
+    recurringRegistrationError.value = error instanceof Error ? error.message : 'No fue posible registrar el movimiento.'
   }
 }
 
