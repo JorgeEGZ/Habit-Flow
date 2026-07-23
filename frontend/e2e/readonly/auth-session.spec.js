@@ -21,7 +21,7 @@ test('@readonly restaura la sesión después de recargar y permite cerrar sesió
 
   await page.reload()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: 'Tablero' })).toBeVisible()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Tablero', exact: true })).toBeVisible()
 
   await logout(page)
   await page.goto('/dashboard')

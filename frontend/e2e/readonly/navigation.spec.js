@@ -19,6 +19,6 @@ test('@readonly navega por los módulos autenticados', async ({ page }) => {
 
   for (const [path, heading] of routes) {
     await page.goto(path)
-    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
+    await expect(page.getByRole('main').getByRole('heading', { name: heading, exact: true })).toBeVisible()
   }
 })

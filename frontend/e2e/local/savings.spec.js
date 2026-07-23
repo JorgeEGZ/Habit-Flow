@@ -24,5 +24,5 @@ test('crea una meta de ahorro y registra un aporte', async ({ page }) => {
   const contributionDialog = page.getByRole('dialog', { name: 'Registrar aporte' })
   await contributionDialog.getByLabel('Monto').fill('25000')
   await contributionDialog.getByRole('button', { name: 'Guardar aporte' }).click()
-  await expect(page.getByText('25.000', { exact: false })).toBeVisible()
+  await expect(page.getByRole('listitem').getByText('25.000', { exact: false })).toBeVisible()
 })

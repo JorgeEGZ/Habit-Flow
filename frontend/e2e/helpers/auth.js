@@ -18,7 +18,7 @@ export async function registerLocalUser(page, user = createLocalUser()) {
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Registrar' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: 'Tablero' })).toBeVisible()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Tablero', exact: true })).toBeVisible()
 
   return user
 }
@@ -31,7 +31,7 @@ export async function login(page, user) {
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Entrar' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
-  await expect(page.getByRole('heading', { name: 'Tablero' })).toBeVisible()
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Tablero', exact: true })).toBeVisible()
 }
 
 export async function authenticate(page) {

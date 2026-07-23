@@ -6,7 +6,7 @@ export function createLocalUser() {
   const suffix = uniqueSuffix()
   return {
     fullName: 'E2E ' + suffix,
-    email: 'habitflow.e2e.' + suffix + '@example.test',
+    email: 'habitflow.e2e.' + suffix + '@example.com',
     password: 'SmokePass123!',
   }
 }

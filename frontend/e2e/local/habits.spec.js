@@ -19,8 +19,8 @@ test('crea y registra un hábito diario de hecho o no hecho', async ({ page }) =
   await page.goto('/habits/today')
   const habitCard = page.locator('article').filter({ hasText: title })
   await habitCard.getByRole('button', { name: 'Marcar como hecho' }).click()
-  await expect(habitCard.getByText('Completado hoy', { exact: true })).toBeVisible()
+  await expect(habitCard.locator('.habit-daily-status', { hasText: 'Completado hoy' })).toBeVisible()
 
   await page.reload()
-  await expect(page.locator('article').filter({ hasText: title }).getByText('Completado hoy', { exact: true })).toBeVisible()
+  await expect(page.locator('article').filter({ hasText: title }).locator('.habit-daily-status', { hasText: 'Completado hoy' })).toBeVisible()
 })

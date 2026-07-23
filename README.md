@@ -43,3 +43,17 @@ Infrastructure:
 ```bash
 docker compose up -d --build
 docker compose exec backend alembic upgrade head
+```
+
+The Docker backend connects to PostgreSQL internally with
+postgresql+asyncpg://habitflow:habitflow@postgres:5432/habitflow.
+
+HabitFlow publishes PostgreSQL to host port 5433 to avoid conflicting with
+other local containers or a host PostgreSQL installation. When running FastAPI
+directly on the host, set backend/.env with:
+
+    DATABASE_URL=postgresql+asyncpg://habitflow:habitflow@localhost:5433/habitflow
+
+Verify the local API after Compose starts:
+
+    curl http://localhost:8000/api/v1/health
