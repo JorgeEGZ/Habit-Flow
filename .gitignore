@@ -9,6 +9,9 @@
 CLAUDE.md
 AGENTS.md
 docs/
+!docs/
+docs/*
+!docs/DECISIONS.md
 
 # Python
 __pycache__/
@@ -47,3 +50,12 @@ Thumbs.db
 
 # Docker/local volumes
 postgres_data/
+
+# OCI production deployment environment and certificate material.
+deploy/oci/.env
+deploy/oci/backend.env
+deploy/oci/postgres.env
+deploy/oci/certbot/conf/*
+!deploy/oci/certbot/conf/.gitkeep
+deploy/oci/certbot/www/*
+!deploy/oci/certbot/www/.gitkeep

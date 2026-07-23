@@ -58,6 +58,12 @@ Verify the local API after Compose starts:
 
     curl http://localhost:8000/api/v1/health
 
+Migrations run automatically when the backend starts. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for cloud-neutral production deployment,
+serialized release migrations, environment settings, health checks, and
+cutover guidance. The Oracle Cloud Free Tier single-VM Nginx option is
+documented in [deploy/oci/README.md](deploy/oci/README.md).
+
 ## Continuous Integration
 
 GitHub Actions runs required backend, frontend-build, and local Playwright
@@ -65,6 +71,7 @@ checks for pull requests to `main` and pushes to `main`. The backend job runs
 Alembic against PostgreSQL; the existing backend test suite keeps its isolated
 SQLite fixtures.
 
-Render read-only smoke tests are intentionally manual/deferred. A future
-workflow will require `RENDER_BASE_URL`, `E2E_EMAIL`, and `E2E_PASSWORD` as
-repository or environment secrets; do not commit these values.
+Remote read-only smoke tests are intentionally manual/deferred. A future
+cloud-neutral workflow will require `BASE_URL`, `E2E_EMAIL`, and
+`E2E_PASSWORD` as repository or environment secrets; do not commit these
+values. Render remains a supported transitional deployment target.

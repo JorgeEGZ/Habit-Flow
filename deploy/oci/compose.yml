@@ -1,0 +1,124 @@
+name: habitflow-oci
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile.prod
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+    image: habitflow-web:oci
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the OCI environment file}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: ${CERTBOT_CONF_DIR:?Set CERTBOT_CONF_DIR in the OCI environment file}
+        target: /etc/letsencrypt
+        read_only: true
+      - type: bind
+        source: ${CERTBOT_WWW_DIR:?Set CERTBOT_WWW_DIR in the OCI environment file}
+        target: /var/www/certbot
+        read_only: true
+      - type: bind
+        source: ${NGINX_LOG_DIR:?Set NGINX_LOG_DIR in the OCI environment file}
+        target: /var/log/nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - web_internal
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    image: habitflow-backend:oci
+    restart: unless-stopped
+    env_file:
+      - ${BACKEND_ENV_FILE:?Set BACKEND_ENV_FILE in the OCI environment file}
+    environment:
+      MIGRATE_ON_START: "false"
+      PORT: "8000"
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - web_internal
+      - data_internal
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=2)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file:
+      - ${POSTGRES_ENV_FILE:?Set POSTGRES_ENV_FILE in the OCI environment file}
+    volumes:
+      - type: bind
+        source: ${POSTGRES_DATA_DIR:?Set POSTGRES_DATA_DIR in the OCI environment file}
+        target: /var/lib/postgresql/data
+      - type: bind
+        source: ${BACKUP_DIR:?Set BACKUP_DIR in the OCI environment file}
+        target: /backups
+        read_only: true
+    networks:
+      - data_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot:v3.3.0
+    profiles: ["tools"]
+    volumes:
+      - type: bind
+        source: ${CERTBOT_CONF_DIR:?Set CERTBOT_CONF_DIR in the OCI environment file}
+        target: /etc/letsencrypt
+      - type: bind
+        source: ${CERTBOT_WWW_DIR:?Set CERTBOT_WWW_DIR in the OCI environment file}
+        target: /var/www/certbot
+    networks:
+      - web_internal
+
+networks:
+  web_internal:
+  data_internal:
+    internal: true
