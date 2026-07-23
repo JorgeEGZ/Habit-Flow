@@ -5,6 +5,13 @@ export async function listGoals() {
   return data
 }
 
+export async function exportGoals(format) {
+  const { data } = await api.get(`/savings/exports/goals.${format}`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function createGoal(payload) {
   const { data } = await api.post('/savings/goals', payload)
   return data

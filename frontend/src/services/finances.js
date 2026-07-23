@@ -43,6 +43,22 @@ export async function listTransactions(params = {}) {
   return data
 }
 
+export async function exportTransactions(format, params) {
+  const { data } = await api.get(`/finances/exports/transactions.${format}`, {
+    params,
+    responseType: 'blob',
+  })
+  return data
+}
+
+export async function exportMonthlyBudgets(format, month) {
+  const { data } = await api.get(`/finances/exports/monthly-budgets.${format}`, {
+    params: month ? { month } : undefined,
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function getSpendingByCategory(month) {
   const { data } = await api.get('/finances/insights/spending-by-category', {
     params: month ? { month } : undefined,

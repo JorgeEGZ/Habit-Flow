@@ -13,6 +13,7 @@ from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.finances.routes import router as finances_router
 from app.modules.habits.routes import router as habits_router
 from app.modules.health.routes import router as health_router
+from app.modules.savings.routes import exports_router as savings_exports_router
 from app.modules.savings.routes import router as savings_router
 from app.modules.users.routes import router as users_router
 
@@ -76,6 +77,11 @@ app.include_router(
 )
 app.include_router(
     savings_router,
+    prefix="/api/v1",
+    tags=["savings"],
+)
+app.include_router(
+    savings_exports_router,
     prefix="/api/v1",
     tags=["savings"],
 )

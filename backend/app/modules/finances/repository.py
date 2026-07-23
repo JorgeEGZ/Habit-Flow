@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import case, func, select
+from sqlalchemy import asc, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.finances.models import (
@@ -359,6 +359,44 @@ async def list_transactions_for_user(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def list_transaction_export_rows_for_user(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    from_date: date,
+    to_date: date,
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    entry_type: str | None = None,
+    sort_order: str = "desc",
+) -> list[tuple[Transaction, str, str]]:
+    ordering = asc if sort_order == "asc" else desc
+    stmt = (
+        select(Transaction, Account.name, Category.name)
+        .join(Account, Account.id == Transaction.account_id)
+        .join(Category, Category.id == Transaction.category_id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.transaction_date >= from_date,
+            Transaction.transaction_date <= to_date,
+        )
+        .order_by(
+            ordering(Transaction.transaction_date),
+            ordering(Transaction.created_at),
+            ordering(Transaction.id),
+        )
+    )
+    if account_id is not None:
+        stmt = stmt.where(Transaction.account_id == account_id)
+    if category_id is not None:
+        stmt = stmt.where(Transaction.category_id == category_id)
+    if entry_type is not None:
+        stmt = stmt.where(Transaction.type == entry_type)
+
+    result = await session.execute(stmt)
+    return [(row[0], row[1], row[2]) for row in result.all()]
 
 
 async def create_transaction(

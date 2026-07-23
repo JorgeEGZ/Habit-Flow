@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Response, status
 
 from app.core.dependencies import CurrentUser, DbSession
+from app.core.exports import csv_export_response, current_app_date, xlsx_export_response
 from app.modules.savings import service as savings_service
 from app.modules.savings.schemas import (
     SavingContributionIn,
@@ -16,6 +17,40 @@ from app.modules.savings.schemas import (
 )
 
 router = APIRouter(prefix="/savings/goals", tags=["savings"])
+exports_router = APIRouter(prefix="/savings/exports", tags=["savings"])
+
+GOAL_EXPORT_HEADERS = (
+    "name",
+    "description",
+    "target_amount",
+    "contributed_amount",
+    "remaining_amount",
+    "completion_percentage",
+    "status",
+    "target_date",
+    "goal_id",
+    "created_at",
+    "updated_at",
+)
+
+
+@exports_router.get("/goals.csv")
+async def export_goals_csv(session: DbSession, user: CurrentUser) -> Response:
+    rows = await savings_service.get_goal_export_rows(session, user_id=user.id)
+    filename = f"habitflow-savings-goals-{current_app_date().isoformat()}.csv"
+    return csv_export_response(headers=GOAL_EXPORT_HEADERS, rows=rows, filename=filename)
+
+
+@exports_router.get("/goals.xlsx")
+async def export_goals_xlsx(session: DbSession, user: CurrentUser) -> Response:
+    rows = await savings_service.get_goal_export_rows(session, user_id=user.id)
+    filename = f"habitflow-savings-goals-{current_app_date().isoformat()}.xlsx"
+    return xlsx_export_response(
+        headers=GOAL_EXPORT_HEADERS,
+        rows=rows,
+        filename=filename,
+        worksheet_title="Savings goals",
+    )
 
 
 @router.get("", response_model=list[SavingGoalRead])

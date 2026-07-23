@@ -4,9 +4,10 @@ import uuid
 from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.core.dependencies import CurrentUser, DbSession
+from app.core.exports import csv_export_response, xlsx_export_response
 from app.modules.finances import service as finances_service
 from app.modules.finances.schemas import (
     AccountCreate,
@@ -32,6 +33,31 @@ from app.modules.finances.schemas import (
 router = APIRouter(prefix="/finances", tags=["finances"])
 
 MONTH_QUERY_PATTERN = r"^[1-9]\d{3}-(0[1-9]|1[0-2])$"
+TRANSACTION_EXPORT_HEADERS = (
+    "transaction_date",
+    "type",
+    "amount",
+    "account_name",
+    "category_name",
+    "description",
+    "transaction_id",
+    "account_id",
+    "category_id",
+    "created_at",
+)
+MONTHLY_BUDGET_EXPORT_HEADERS = (
+    "month",
+    "category_name",
+    "budget_amount",
+    "spent_amount",
+    "remaining_amount",
+    "over_budget_amount",
+    "transaction_count",
+    "usage_percentage",
+    "exceeded",
+    "budget_id",
+    "category_id",
+)
 
 
 # ---------- Accounts ----------
@@ -200,6 +226,153 @@ async def delete_monthly_budget(
 
 
 # ---------- Transactions ----------
+
+async def _transaction_export(
+    *,
+    session: DbSession,
+    user: CurrentUser,
+    export_format: Literal["csv", "xlsx"],
+    from_date: date | None,
+    to_date: date | None,
+    account_id: uuid.UUID | None,
+    category_id: uuid.UUID | None,
+    entry_type: Literal["income", "expense"] | None,
+    sort_order: Literal["asc", "desc"],
+) -> Response:
+    try:
+        period_start, period_end = finances_service.resolve_transaction_export_dates(
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    rows = await finances_service.get_transaction_export_rows(
+        session,
+        user_id=user.id,
+        from_date=period_start,
+        to_date=period_end,
+        account_id=account_id,
+        category_id=category_id,
+        entry_type=entry_type,
+        sort_order=sort_order,
+    )
+    filename = f"habitflow-transactions-{period_start.isoformat()}-to-{period_end.isoformat()}.{export_format}"
+    if export_format == "csv":
+        return csv_export_response(
+            headers=TRANSACTION_EXPORT_HEADERS,
+            rows=rows,
+            filename=filename,
+        )
+    return xlsx_export_response(
+        headers=TRANSACTION_EXPORT_HEADERS,
+        rows=rows,
+        filename=filename,
+        worksheet_title="Transactions",
+    )
+
+
+@router.get("/exports/transactions.csv")
+async def export_transactions_csv(
+    session: DbSession,
+    user: CurrentUser,
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    entry_type: Literal["income", "expense"] | None = Query(default=None, alias="type"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", alias="sort"),
+) -> Response:
+    return await _transaction_export(
+        session=session,
+        user=user,
+        export_format="csv",
+        from_date=from_date,
+        to_date=to_date,
+        account_id=account_id,
+        category_id=category_id,
+        entry_type=entry_type,
+        sort_order=sort_order,
+    )
+
+
+@router.get("/exports/transactions.xlsx")
+async def export_transactions_xlsx(
+    session: DbSession,
+    user: CurrentUser,
+    from_date: date | None = Query(default=None, alias="from"),
+    to_date: date | None = Query(default=None, alias="to"),
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    entry_type: Literal["income", "expense"] | None = Query(default=None, alias="type"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", alias="sort"),
+) -> Response:
+    return await _transaction_export(
+        session=session,
+        user=user,
+        export_format="xlsx",
+        from_date=from_date,
+        to_date=to_date,
+        account_id=account_id,
+        category_id=category_id,
+        entry_type=entry_type,
+        sort_order=sort_order,
+    )
+
+
+async def _monthly_budget_export(
+    *,
+    session: DbSession,
+    user: CurrentUser,
+    export_format: Literal["csv", "xlsx"],
+    month: str | None,
+) -> Response:
+    selected_month, rows = await finances_service.get_monthly_budget_export_rows(
+        session,
+        user_id=user.id,
+        month=month,
+    )
+    filename = f"habitflow-monthly-budgets-{selected_month}.{export_format}"
+    if export_format == "csv":
+        return csv_export_response(
+            headers=MONTHLY_BUDGET_EXPORT_HEADERS,
+            rows=rows,
+            filename=filename,
+        )
+    return xlsx_export_response(
+        headers=MONTHLY_BUDGET_EXPORT_HEADERS,
+        rows=rows,
+        filename=filename,
+        worksheet_title="Monthly budgets",
+    )
+
+
+@router.get("/exports/monthly-budgets.csv")
+async def export_monthly_budgets_csv(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> Response:
+    return await _monthly_budget_export(
+        session=session,
+        user=user,
+        export_format="csv",
+        month=month,
+    )
+
+
+@router.get("/exports/monthly-budgets.xlsx")
+async def export_monthly_budgets_xlsx(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> Response:
+    return await _monthly_budget_export(
+        session=session,
+        user=user,
+        export_format="xlsx",
+        month=month,
+    )
 
 @router.get(
     "/insights/spending-by-category",

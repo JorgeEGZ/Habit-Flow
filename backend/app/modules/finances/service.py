@@ -56,6 +56,7 @@ from app.modules.finances.schemas import (
 
 MONTH_PATTERN = re.compile(r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")
 UPCOMING_RECURRING_WINDOWS = frozenset({7, 30})
+MAX_EXPORT_RANGE_DAYS = 366
 
 
 def _validate_positive_amount(amount: int, *, label: str) -> None:
@@ -111,6 +112,24 @@ def _share_percentage(amount: int, total: int) -> float:
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     )
+
+
+def resolve_transaction_export_dates(
+    *,
+    from_date: date | None,
+    to_date: date | None,
+    today: date | None = None,
+) -> tuple[date, date]:
+    if (from_date is None) != (to_date is None):
+        raise ValueError("from and to must be provided together.")
+    if from_date is None or to_date is None:
+        _month, period_start, period_end = _spending_month_bounds(None, today=today or current_app_date())
+        return period_start, period_end
+    if from_date > to_date:
+        raise ValueError("from must not be after to.")
+    if (to_date - from_date).days + 1 > MAX_EXPORT_RANGE_DAYS:
+        raise ValueError("Export range must not exceed 366 days.")
+    return from_date, to_date
 
 
 def _monthly_budget_read(budget: MonthlyCategoryBudget) -> MonthlyCategoryBudgetRead:
@@ -568,6 +587,70 @@ async def list_transactions(
         from_date=from_date,
         to_date=to_date,
     )
+
+
+async def get_transaction_export_rows(
+    session,
+    *,
+    user_id: uuid.UUID,
+    from_date: date,
+    to_date: date,
+    account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    entry_type: str | None = None,
+    sort_order: str = "desc",
+) -> list[list[object]]:
+    rows = await finances_repo.list_transaction_export_rows_for_user(
+        session,
+        user_id=user_id,
+        from_date=from_date,
+        to_date=to_date,
+        account_id=account_id,
+        category_id=category_id,
+        entry_type=entry_type,
+        sort_order=sort_order,
+    )
+    return [
+        [
+            transaction.transaction_date.isoformat(),
+            transaction.type,
+            transaction.amount,
+            account_name,
+            category_name,
+            transaction.description,
+            str(transaction.id),
+            str(transaction.account_id),
+            str(transaction.category_id),
+            transaction.created_at.isoformat(),
+        ]
+        for transaction, account_name, category_name in rows
+    ]
+
+
+async def get_monthly_budget_export_rows(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+    today: date | None = None,
+) -> tuple[str, list[list[object]]]:
+    summary = await get_monthly_budgets(session, user_id=user_id, month=month, today=today)
+    return summary.month, [
+        [
+            summary.month,
+            budget.category_name,
+            budget.budget_amount,
+            budget.spent_amount,
+            budget.remaining_amount,
+            budget.over_budget_amount,
+            budget.transaction_count,
+            budget.usage_percentage,
+            str(budget.exceeded).lower(),
+            str(budget.budget_id),
+            str(budget.category_id),
+        ]
+        for budget in summary.budgets
+    ]
 
 
 async def get_transaction(

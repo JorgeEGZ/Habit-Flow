@@ -107,7 +107,11 @@
             <h2>Movimientos</h2>
             <p>Revisa y administra los registros financieros más recientes.</p>
           </div>
-          <Button type="button" label="Nuevo movimiento" icon="pi pi-plus" @click="openCreateTransactionDialog" />
+          <div class="finance-panel-header__actions">
+            <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingTransactionFormat)" @click="openTransactionExportDialog" />
+            <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingTransactionFormat)" @click="openTransactionExportDialog" />
+            <Button type="button" label="Nuevo movimiento" icon="pi pi-plus" @click="openCreateTransactionDialog" />
+          </div>
         </header>
 
         <div class="finance-toolbar">
@@ -180,8 +184,14 @@
             <h2>Presupuestos mensuales</h2>
             <p>Define cuánto planeas gastar por categoría y compáralo con tus movimientos reales.</p>
           </div>
-          <Button type="button" label="Nuevo presupuesto" icon="pi pi-plus" @click="openCreateMonthlyBudgetDialog" />
+          <div class="finance-panel-header__actions">
+            <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingBudgetFormat)" @click="handleMonthlyBudgetExport('csv')" />
+            <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingBudgetFormat)" @click="handleMonthlyBudgetExport('xlsx')" />
+            <Button type="button" label="Nuevo presupuesto" icon="pi pi-plus" @click="openCreateMonthlyBudgetDialog" />
+          </div>
         </header>
+
+        <p v-if="budgetExportError" class="dashboard-page__alert finance-panel__alert">{{ budgetExportError }}</p>
 
         <label class="finance-budget-month">
           <span>Mes</span>
@@ -455,6 +465,35 @@
       <template #footer>
         <Button type="submit" form="transaction-editor-form" :label="editingTransactionId ? 'Guardar cambios' : 'Crear movimiento'" icon="pi pi-check" class="app-button app-button--primary" :loading="financesStore.submitting" />
         <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="financesStore.submitting" @click="resetTransactionForm" />
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="showTransactionExportDialog"
+      modal
+      dismissableMask
+      class="app-dialog"
+      header="Exportar movimientos"
+    >
+      <p class="transaction-panel__subtitle">Descarga los movimientos dentro del rango seleccionado y con los filtros actuales.</p>
+      <p v-if="transactionExportError" class="dashboard-page__alert transaction-panel__alert">{{ transactionExportError }}</p>
+      <form id="transaction-export-form" class="transaction-form" @submit.prevent="handleTransactionExport('csv')">
+        <div class="transaction-inline-grid">
+          <label class="transaction-field">
+            <span>Desde</span>
+            <input v-model="transactionExportForm.from" class="finance-input" type="date" required />
+          </label>
+          <label class="transaction-field">
+            <span>Hasta</span>
+            <input v-model="transactionExportForm.to" class="finance-input" type="date" required />
+          </label>
+        </div>
+        <p class="transaction-panel__hint">Se aplicarán los filtros actuales de cuenta, categoría, tipo y orden.</p>
+      </form>
+      <template #footer>
+        <Button type="submit" form="transaction-export-form" label="Exportar CSV" icon="pi pi-download" class="app-button app-button--primary" :loading="exportingTransactionFormat === 'csv'" :disabled="Boolean(exportingTransactionFormat)" />
+        <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" class="app-button app-button--secondary" :loading="exportingTransactionFormat === 'xlsx'" :disabled="Boolean(exportingTransactionFormat)" @click="handleTransactionExport('xlsx')" />
+        <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="text" :disabled="Boolean(exportingTransactionFormat)" @click="showTransactionExportDialog = false" />
       </template>
     </Dialog>
 
@@ -741,6 +780,8 @@ import { useRoute } from 'vue-router'
 import SecondaryNav from '../../components/common/SecondaryNav.vue'
 import { useDashboardStore } from '../../stores/dashboard'
 import { useFinancesStore } from '../../stores/finances'
+import * as financesService from '../../services/finances'
+import { downloadBlob } from '../../utils/download'
 import { formatCurrencyCop, formatDateShort, getLocalDateString } from '../../utils/format'
 
 const financesStore = useFinancesStore()
@@ -758,11 +799,16 @@ const showCategoryDialog = ref(false)
 const showTransactionDialog = ref(false)
 const showRecurringDialog = ref(false)
 const showMonthlyBudgetDialog = ref(false)
+const showTransactionExportDialog = ref(false)
 const accountFormError = ref('')
 const categoryFormError = ref('')
 const transactionFormError = ref('')
 const recurringFormError = ref('')
 const monthlyBudgetFormError = ref('')
+const transactionExportError = ref('')
+const exportingTransactionFormat = ref('')
+const exportingBudgetFormat = ref('')
+const budgetExportError = ref('')
 const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
 const budgetMonth = ref('')
@@ -789,6 +835,11 @@ const transactionForm = reactive({
   amount: 1,
   description: '',
   transactionDate: getLocalDateString(),
+})
+
+const transactionExportForm = reactive({
+  from: '',
+  to: '',
 })
 
 const recurringForm = reactive({
@@ -1226,6 +1277,78 @@ function openCreateCategoryDialog() {
 function openCreateTransactionDialog() {
   resetTransactionForm()
   showTransactionDialog.value = true
+}
+
+function currentMonthRange() {
+  const today = getLocalDateString()
+  const year = Number(today.slice(0, 4))
+  const month = Number(today.slice(5, 7))
+  const lastDay = new Date(year, month, 0).getDate()
+  return {
+    from: `${today.slice(0, 7)}-01`,
+    to: `${today.slice(0, 7)}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
+function openTransactionExportDialog() {
+  const range = currentMonthRange()
+  transactionExportForm.from = range.from
+  transactionExportForm.to = range.to
+  transactionExportError.value = ''
+  showTransactionExportDialog.value = true
+}
+
+function buildTransactionExportParams() {
+  const { from, to } = transactionExportForm
+  if (!from || !to) {
+    throw new Error('Selecciona una fecha inicial y una fecha final.')
+  }
+  if (from > to) {
+    throw new Error('La fecha inicial no puede ser posterior a la fecha final.')
+  }
+
+  const fromDate = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)))
+  const toDate = new Date(Number(to.slice(0, 4)), Number(to.slice(5, 7)) - 1, Number(to.slice(8, 10)))
+  if ((toDate - fromDate) / 86400000 + 1 > 366) {
+    throw new Error('El rango de exportación no puede superar 366 días.')
+  }
+
+  const params = { from, to, sort: transactionFilters.sortOrder }
+  if (transactionFilters.accountId !== 'all') params.account_id = transactionFilters.accountId
+  if (transactionFilters.categoryId !== 'all') params.category_id = transactionFilters.categoryId
+  if (transactionFilters.type !== 'all') params.type = transactionFilters.type
+  return params
+}
+
+async function handleTransactionExport(format) {
+  transactionExportError.value = ''
+  try {
+    const params = buildTransactionExportParams()
+    exportingTransactionFormat.value = format
+    const blob = await financesService.exportTransactions(format, params)
+    downloadBlob(blob, `habitflow-transactions-${params.from}-to-${params.to}.${format}`)
+    showTransactionExportDialog.value = false
+  } catch (error) {
+    transactionExportError.value = error instanceof Error && error.message.startsWith('Selecciona') || error instanceof Error && error.message.startsWith('La fecha') || error instanceof Error && error.message.startsWith('El rango')
+      ? error.message
+      : 'No fue posible exportar los movimientos.'
+  } finally {
+    exportingTransactionFormat.value = ''
+  }
+}
+
+async function handleMonthlyBudgetExport(format) {
+  budgetExportError.value = ''
+  exportingBudgetFormat.value = format
+  try {
+    const month = budgetMonth.value || getLocalDateString().slice(0, 7)
+    const blob = await financesService.exportMonthlyBudgets(format, month)
+    downloadBlob(blob, `habitflow-monthly-budgets-${month}.${format}`)
+  } catch {
+    budgetExportError.value = 'No fue posible exportar los presupuestos.'
+  } finally {
+    exportingBudgetFormat.value = ''
+  }
 }
 
 function openCreateRecurringDialog() {

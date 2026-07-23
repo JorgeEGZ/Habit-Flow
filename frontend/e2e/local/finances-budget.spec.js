@@ -1,4 +1,5 @@
 import { authenticate } from '../helpers/auth.js'
+import { readFile } from 'node:fs/promises'
 import { currentMonth, uniqueSuffix } from '../helpers/data.js'
 import { isLocalTarget } from '../helpers/environment.js'
 import { expect, test } from '../fixtures/app-test.js'
@@ -37,6 +38,27 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
   await dialog.getByLabel('Descripción').fill('Movimiento E2E')
   await dialog.getByRole('button', { name: 'Crear movimiento' }).click()
   await expect(page.getByText('Movimiento E2E', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Exportar CSV' }).click()
+  dialog = page.getByRole('dialog', { name: 'Exportar movimientos' })
+  const [csvDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Exportar CSV' }).click(),
+  ])
+  expect(csvDownload.suggestedFilename()).toMatch(/^habitflow-transactions-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.csv$/)
+  const csvPath = await csvDownload.path()
+  expect(csvPath).not.toBeNull()
+  const csv = await readFile(csvPath, 'utf8')
+  expect(csv).toContain('transaction_date,type,amount')
+  expect(csv).toContain('Movimiento E2E')
+
+  await page.getByRole('button', { name: 'Exportar Excel' }).first().click()
+  dialog = page.getByRole('dialog', { name: 'Exportar movimientos' })
+  const [xlsxDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: 'Exportar Excel' }).click(),
+  ])
+  expect(xlsxDownload.suggestedFilename()).toMatch(/^habitflow-transactions-\d{4}-\d{2}-\d{2}-to-\d{4}-\d{2}-\d{2}\.xlsx$/)
 
   await page.goto('/finances/budgets')
   await page.getByRole('button', { name: 'Nuevo presupuesto' }).click()

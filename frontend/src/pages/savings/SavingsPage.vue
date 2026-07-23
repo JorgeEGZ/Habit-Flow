@@ -7,12 +7,17 @@
           <h1 id="savings-overview-title">Ahorros</h1>
           <p>Organiza tus metas y consulta el progreso de cada objetivo.</p>
         </div>
-        <Button type="button" label="Nueva meta" icon="pi pi-plus" @click="openCreateGoalDialog" />
+        <div class="savings-header-actions">
+          <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingGoalsFormat)" @click="handleGoalsExport('csv')" />
+          <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingGoalsFormat)" @click="handleGoalsExport('xlsx')" />
+          <Button type="button" label="Nueva meta" icon="pi pi-plus" @click="openCreateGoalDialog" />
+        </div>
       </header>
 
       <p v-if="savingsStore.error" class="dashboard-page__alert">
         {{ savingsStore.error }}
       </p>
+      <p v-if="goalsExportError" class="dashboard-page__alert">{{ goalsExportError }}</p>
 
       <section class="savings-summary" aria-label="Resumen de ahorros">
         <article class="dashboard-stat">
@@ -298,6 +303,8 @@ import Dialog from 'primevue/dialog'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useSavingsStore } from '../../stores/savings'
+import * as savingsService from '../../services/savings'
+import { downloadBlob } from '../../utils/download'
 import { formatCurrencyCop, formatDateShort, getLocalDateString } from '../../utils/format'
 
 const savingsStore = useSavingsStore()
@@ -310,6 +317,8 @@ const editingGoalId = ref('')
 const detailLoading = ref(false)
 const showGoalDialog = ref(false)
 const showContributionDialog = ref(false)
+const exportingGoalsFormat = ref('')
+const goalsExportError = ref('')
 
 const goalForm = reactive({
   name: '',
@@ -404,6 +413,19 @@ function clearGoalForm() {
 function openCreateGoalDialog() {
   clearGoalForm()
   showGoalDialog.value = true
+}
+
+async function handleGoalsExport(format) {
+  goalsExportError.value = ''
+  exportingGoalsFormat.value = format
+  try {
+    const blob = await savingsService.exportGoals(format)
+    downloadBlob(blob, `habitflow-savings-goals-${getLocalDateString()}.${format}`)
+  } catch {
+    goalsExportError.value = 'No fue posible exportar las metas de ahorro.'
+  } finally {
+    exportingGoalsFormat.value = ''
+  }
 }
 
 function startGoalEdit(goal) {

@@ -59,6 +59,26 @@ async def list_goals(session, *, user_id: uuid.UUID) -> list[SavingGoal]:
     return goals
 
 
+async def get_goal_export_rows(session, *, user_id: uuid.UUID) -> list[list[object]]:
+    rows = await savings_repo.list_goals_for_user(session, user_id=user_id)
+    return [
+        [
+            goal.name,
+            goal.description,
+            goal.target_amount,
+            current_amount,
+            max(goal.target_amount - current_amount, 0),
+            _completion_percentage(current_amount, goal.target_amount),
+            _derive_status(current_amount, goal.target_amount),
+            goal.target_date.isoformat() if goal.target_date else None,
+            str(goal.id),
+            goal.created_at.isoformat(),
+            goal.updated_at.isoformat(),
+        ]
+        for goal, current_amount in rows
+    ]
+
+
 async def get_goal(session, *, user_id: uuid.UUID, goal_id: uuid.UUID) -> SavingGoal:
     row = await savings_repo.get_goal_with_progress(
         session, goal_id=goal_id, user_id=user_id

@@ -2788,6 +2788,14 @@ svg {
   flex-shrink: 0;
 }
 
+.finance-panel-header__actions,
+.savings-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
 .finance-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3733,6 +3741,11 @@ svg {
 
   .finance-workspace__header .p-button,
   .finance-panel-header .p-button {
+    width: 100%;
+  }
+
+  .finance-panel-header__actions,
+  .savings-header-actions {
     width: 100%;
   }
 
