@@ -81,6 +81,12 @@ class SavingGoalNotFound(DomainError):
     message = "Saving goal not found."
 
 
+class SavingContributionNotFound(DomainError):
+    code = "saving_contribution_not_found"
+    status_code = 404
+    message = "Saving contribution not found."
+
+
 class AccountNotFound(DomainError):
     code = "account_not_found"
     status_code = 404

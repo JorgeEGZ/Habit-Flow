@@ -10,6 +10,7 @@ from app.modules.savings import service as savings_service
 from app.modules.savings.schemas import (
     SavingContributionIn,
     SavingContributionRead,
+    SavingContributionUpdate,
     SavingGoalCreate,
     SavingGoalProgress,
     SavingGoalRead,
@@ -33,6 +34,17 @@ GOAL_EXPORT_HEADERS = (
     "updated_at",
 )
 
+CONTRIBUTION_EXPORT_HEADERS = (
+    "goal_name",
+    "contribution_date",
+    "amount",
+    "note",
+    "contribution_id",
+    "goal_id",
+    "created_at",
+    "updated_at",
+)
+
 
 @exports_router.get("/goals.csv")
 async def export_goals_csv(session: DbSession, user: CurrentUser) -> Response:
@@ -50,6 +62,37 @@ async def export_goals_xlsx(session: DbSession, user: CurrentUser) -> Response:
         rows=rows,
         filename=filename,
         worksheet_title="Savings goals",
+    )
+
+
+@exports_router.get("/goals/{goal_id}/contributions.csv")
+async def export_contributions_csv(
+    goal_id: uuid.UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> Response:
+    rows = await savings_service.get_contribution_export_rows(
+        session, user_id=user.id, goal_id=goal_id
+    )
+    filename = f"habitflow-savings-contributions-{goal_id}-{current_app_date().isoformat()}.csv"
+    return csv_export_response(headers=CONTRIBUTION_EXPORT_HEADERS, rows=rows, filename=filename)
+
+
+@exports_router.get("/goals/{goal_id}/contributions.xlsx")
+async def export_contributions_xlsx(
+    goal_id: uuid.UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> Response:
+    rows = await savings_service.get_contribution_export_rows(
+        session, user_id=user.id, goal_id=goal_id
+    )
+    filename = f"habitflow-savings-contributions-{goal_id}-{current_app_date().isoformat()}.xlsx"
+    return xlsx_export_response(
+        headers=CONTRIBUTION_EXPORT_HEADERS,
+        rows=rows,
+        filename=filename,
+        worksheet_title="Savings contributions",
     )
 
 
@@ -135,6 +178,46 @@ async def add_contribution(
         payload=payload,
     )
     return SavingContributionRead.model_validate(contribution)
+
+
+@router.patch(
+    "/{goal_id}/contributions/{contribution_id}",
+    response_model=SavingContributionRead,
+)
+async def update_contribution(
+    goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+    payload: SavingContributionUpdate,
+    session: DbSession,
+    user: CurrentUser,
+) -> SavingContributionRead:
+    contribution = await savings_service.update_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal_id,
+        contribution_id=contribution_id,
+        payload=payload,
+    )
+    return SavingContributionRead.model_validate(contribution)
+
+
+@router.delete(
+    "/{goal_id}/contributions/{contribution_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_contribution(
+    goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> Response:
+    await savings_service.delete_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal_id,
+        contribution_id=contribution_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{goal_id}/progress", response_model=SavingGoalProgress)

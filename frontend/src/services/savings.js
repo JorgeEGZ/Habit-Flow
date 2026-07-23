@@ -41,6 +41,25 @@ export async function addContribution(goalId, payload) {
   return data
 }
 
+export async function updateContribution(goalId, contributionId, payload) {
+  const { data } = await api.patch(
+    `/savings/goals/${goalId}/contributions/${contributionId}`,
+    payload,
+  )
+  return data
+}
+
+export async function deleteContribution(goalId, contributionId) {
+  await api.delete(`/savings/goals/${goalId}/contributions/${contributionId}`)
+}
+
+export async function exportGoalContributions(goalId, format) {
+  const { data } = await api.get(`/savings/exports/goals/${goalId}/contributions.${format}`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function getGoalProgress(goalId) {
   const { data } = await api.get(`/savings/goals/${goalId}/progress`)
   return data

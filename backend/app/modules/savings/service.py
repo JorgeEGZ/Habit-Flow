@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import uuid
 
-from app.core.exceptions import SavingGoalNotFound, ValidationError
+from app.core.exceptions import (
+    SavingContributionNotFound,
+    SavingGoalNotFound,
+    ValidationError,
+)
+from app.core.exports import current_app_date
 from app.modules.savings import repository as savings_repo
 from app.modules.savings.models import STATUS_ACTIVE, STATUS_COMPLETED, SavingGoal
 from app.modules.savings.schemas import (
     SavingContributionIn,
     SavingContributionRead,
+    SavingContributionUpdate,
     SavingGoalCreate,
     SavingGoalProgress,
     SavingGoalUpdate,
@@ -25,6 +31,11 @@ def _completion_percentage(current_amount: int, target_amount: int) -> int:
 def _validate_positive_amount(amount: int, *, label: str) -> None:
     if amount <= 0:
         raise ValidationError(f"{label} must be greater than zero.")
+
+
+def _validate_contribution_date(contribution_date) -> None:
+    if contribution_date > current_app_date():
+        raise ValidationError("Contribution date cannot be in the future.")
 
 
 def _apply_derived_status(goal: SavingGoal, current_amount: int) -> SavingGoal:
@@ -76,6 +87,31 @@ async def get_goal_export_rows(session, *, user_id: uuid.UUID) -> list[list[obje
             goal.updated_at.isoformat(),
         ]
         for goal, current_amount in rows
+    ]
+
+
+async def get_contribution_export_rows(
+    session,
+    *,
+    user_id: uuid.UUID,
+    goal_id: uuid.UUID,
+) -> list[list[object]]:
+    goal = await get_goal(session, user_id=user_id, goal_id=goal_id)
+    contributions = await savings_repo.list_contributions_for_goal(
+        session, saving_goal_id=goal_id
+    )
+    return [
+        [
+            goal.name,
+            contribution.contribution_date.isoformat(),
+            contribution.amount,
+            contribution.note,
+            str(contribution.id),
+            str(goal.id),
+            contribution.created_at.isoformat(),
+            contribution.updated_at.isoformat(),
+        ]
+        for contribution in contributions
     ]
 
 
@@ -145,8 +181,9 @@ async def add_contribution(
     if not goal_row:
         raise SavingGoalNotFound()
 
-    _goal, _current_amount = goal_row
+    goal, _current_amount = goal_row
     _validate_positive_amount(payload.amount, label="Contribution amount")
+    _validate_contribution_date(payload.contribution_date)
 
     contribution = await savings_repo.create_contribution(
         session,
@@ -156,19 +193,72 @@ async def add_contribution(
         contribution_date=payload.contribution_date,
     )
 
-    refreshed = await savings_repo.get_goal_with_progress(
-        session, goal_id=goal_id, user_id=user_id
+    await _commit_contribution_mutation(
+        session,
+        user_id=user_id,
+        goal=goal,
     )
-    assert refreshed is not None
-    updated_goal, updated_amount = refreshed
-    derived_status = _derive_status(updated_amount, updated_goal.target_amount)
-    if updated_goal.status != derived_status:
-        await savings_repo.update_goal(
-            session,
-            updated_goal,
-            fields={"status": derived_status},
-        )
+    await session.refresh(contribution)
     return contribution
+
+
+async def update_contribution(
+    session,
+    *,
+    user_id: uuid.UUID,
+    goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+    payload: SavingContributionUpdate,
+):
+    row = await savings_repo.get_contribution_for_goal_and_user(
+        session,
+        saving_goal_id=goal_id,
+        contribution_id=contribution_id,
+        user_id=user_id,
+    )
+    if not row:
+        raise SavingContributionNotFound()
+
+    contribution, goal = row
+    fields = payload.model_dump(exclude_unset=True)
+    if "contribution_date" in fields and fields["contribution_date"] is not None:
+        _validate_contribution_date(fields["contribution_date"])
+
+    await savings_repo.update_contribution(session, contribution, fields=fields)
+    await _commit_contribution_mutation(session, user_id=user_id, goal=goal)
+    await session.refresh(contribution)
+    return contribution
+
+
+async def delete_contribution(
+    session,
+    *,
+    user_id: uuid.UUID,
+    goal_id: uuid.UUID,
+    contribution_id: uuid.UUID,
+) -> None:
+    row = await savings_repo.get_contribution_for_goal_and_user(
+        session,
+        saving_goal_id=goal_id,
+        contribution_id=contribution_id,
+        user_id=user_id,
+    )
+    if not row:
+        raise SavingContributionNotFound()
+
+    contribution, goal = row
+    await savings_repo.delete_contribution(session, contribution)
+    await _commit_contribution_mutation(session, user_id=user_id, goal=goal)
+
+
+async def _commit_contribution_mutation(session, *, user_id: uuid.UUID, goal: SavingGoal) -> None:
+    current_amount = await savings_repo.get_contribution_total_for_goal_and_user(
+        session,
+        saving_goal_id=goal.id,
+        user_id=user_id,
+    )
+    goal.status = _derive_status(current_amount, goal.target_amount)
+    await session.commit()
 
 
 async def get_progress(

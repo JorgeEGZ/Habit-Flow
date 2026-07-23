@@ -24,7 +24,7 @@ export const useSavingsStore = defineStore('savings', {
         this.progressByGoalId = Object.fromEntries(progressEntries)
         return this.items
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible cargar los ahorros.')
+        this.error = getApiErrorMessage(error, 'No fue posible cargar los ahorros.', { safeOnly: true })
         throw error
       } finally {
         this.loading = false
@@ -39,7 +39,7 @@ export const useSavingsStore = defineStore('savings', {
         await this.fetchGoals()
         return goal
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible crear la meta.')
+        this.error = getApiErrorMessage(error, 'No fue posible crear la meta.', { safeOnly: true })
         throw error
       } finally {
         this.submitting = false
@@ -54,7 +54,7 @@ export const useSavingsStore = defineStore('savings', {
         await this.fetchGoals()
         return goal
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible actualizar la meta.')
+        this.error = getApiErrorMessage(error, 'No fue posible actualizar la meta.', { safeOnly: true })
         throw error
       } finally {
         this.submitting = false
@@ -74,7 +74,7 @@ export const useSavingsStore = defineStore('savings', {
         this.progressByGoalId = nextProgress
         await this.fetchGoals()
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible eliminar la meta.')
+        this.error = getApiErrorMessage(error, 'No fue posible eliminar la meta.', { safeOnly: true })
         throw error
       } finally {
         this.submitting = false
@@ -92,7 +92,7 @@ export const useSavingsStore = defineStore('savings', {
         }
         return contributions
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible cargar las contribuciones.')
+        this.error = getApiErrorMessage(error, 'No fue posible cargar las contribuciones.', { safeOnly: true })
         throw error
       } finally {
         this.loading = false
@@ -110,7 +110,7 @@ export const useSavingsStore = defineStore('savings', {
         }
         return progress
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible cargar el progreso.')
+        this.error = getApiErrorMessage(error, 'No fue posible cargar el progreso.', { safeOnly: true })
         throw error
       } finally {
         this.loading = false
@@ -122,14 +122,59 @@ export const useSavingsStore = defineStore('savings', {
       this.error = ''
       try {
         const contribution = await savingsService.addContribution(goalId, payload)
-        await Promise.all([this.fetchGoals(), this.fetchContributions(goalId), this.fetchProgress(goalId)])
+        await this.refreshContributionData(goalId)
         return contribution
       } catch (error) {
-        this.error = getApiErrorMessage(error, 'No fue posible registrar la contribución.')
+        this.error = getApiErrorMessage(error, 'No fue posible registrar la contribución.', { safeOnly: true })
         throw error
       } finally {
         this.submitting = false
       }
     },
+
+    async updateContribution(goalId, contributionId, payload) {
+      this.submitting = true
+      this.error = ''
+      try {
+        const contribution = await savingsService.updateContribution(goalId, contributionId, payload)
+        await this.refreshContributionData(goalId)
+        return contribution
+      } catch (error) {
+        this.error = contributionErrorMessage(error, 'No fue posible guardar el aporte.')
+        throw error
+      } finally {
+        this.submitting = false
+      }
+    },
+
+    async deleteContribution(goalId, contributionId) {
+      this.submitting = true
+      this.error = ''
+      try {
+        await savingsService.deleteContribution(goalId, contributionId)
+        await this.refreshContributionData(goalId)
+      } catch (error) {
+        this.error = contributionErrorMessage(error, 'No fue posible eliminar el aporte.')
+        throw error
+      } finally {
+        this.submitting = false
+      }
+    },
+
+    async refreshContributionData(goalId) {
+      await Promise.all([
+        this.fetchGoals(),
+        this.fetchContributions(goalId),
+        this.fetchProgress(goalId),
+      ])
+    },
   },
 })
+
+function contributionErrorMessage(error, fallback) {
+  if (error?.response?.data?.error?.code === 'saving_contribution_not_found') {
+    return 'El aporte no existe o ya fue eliminado.'
+  }
+
+  return getApiErrorMessage(error, fallback, { safeOnly: true })
+}

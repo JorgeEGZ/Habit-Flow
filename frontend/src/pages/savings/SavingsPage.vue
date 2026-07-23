@@ -190,6 +190,39 @@
         <Card class="savings-detail-card">
           <template #title>Historial de contribuciones</template>
           <template #content>
+            <div class="savings-contribution-toolbar">
+              <p>Administra y exporta los aportes registrados para esta meta.</p>
+              <div class="savings-contribution-toolbar__actions">
+                <Button
+                  type="button"
+                  label="Exportar CSV"
+                  icon="pi pi-download"
+                  severity="secondary"
+                  variant="outlined"
+                  class="app-button app-button--secondary app-button--compact"
+                  :loading="exportingContributionsFormat === 'csv'"
+                  :disabled="Boolean(exportingContributionsFormat)"
+                  @click="handleContributionsExport('csv')"
+                />
+                <Button
+                  type="button"
+                  label="Exportar Excel"
+                  icon="pi pi-file-excel"
+                  severity="secondary"
+                  variant="outlined"
+                  class="app-button app-button--secondary app-button--compact"
+                  :loading="exportingContributionsFormat === 'xlsx'"
+                  :disabled="Boolean(exportingContributionsFormat)"
+                  @click="handleContributionsExport('xlsx')"
+                />
+              </div>
+            </div>
+            <p v-if="contributionsExportError" class="dashboard-page__alert">
+              {{ contributionsExportError }}
+            </p>
+            <p v-if="contributionFeedback" class="savings-contribution-feedback">
+              {{ contributionFeedback }}
+            </p>
             <div v-if="detailLoading" class="dashboard-panel-state">
               Cargando historial de contribuciones...
             </div>
@@ -198,11 +231,35 @@
             </div>
             <ul v-else class="savings-contribution-list">
               <li v-for="contribution in selectedContributions" :key="contribution.id" class="savings-contribution">
-                <div>
+                <div class="savings-contribution__content">
                   <strong>{{ formatCurrencyCop(contribution.amount) }}</strong>
                   <p>{{ contribution.note || 'Sin nota' }}</p>
                 </div>
-                <small>{{ formatDateShort(contribution.contribution_date) }}</small>
+                <div class="savings-contribution__meta">
+                  <small>{{ formatDateShort(contribution.contribution_date) }}</small>
+                  <div class="savings-contribution__actions">
+                    <Button
+                      type="button"
+                      icon="pi pi-pencil"
+                      severity="secondary"
+                      variant="outlined"
+                      class="app-button app-button--icon"
+                      aria-label="Editar aporte"
+                      :disabled="savingsStore.submitting"
+                      @click="startContributionEdit(contribution)"
+                    />
+                    <Button
+                      type="button"
+                      icon="pi pi-trash"
+                      severity="danger"
+                      variant="outlined"
+                      class="app-button app-button--icon app-button--danger"
+                      aria-label="Eliminar aporte"
+                      :disabled="savingsStore.submitting"
+                      @click="handleDeleteContribution(contribution)"
+                    />
+                  </div>
+                </div>
               </li>
             </ul>
           </template>
@@ -259,7 +316,7 @@
       modal
       dismissableMask
       class="app-dialog"
-      header="Registrar aporte"
+      :header="editingContributionId ? 'Editar aporte' : 'Registrar aporte'"
     >
       <p class="savings-form-card__subtitle">
         {{ selectedGoal ? `Meta activa: ${selectedGoal.name}` : 'Selecciona una meta primero.' }}
@@ -290,7 +347,7 @@
         </form>
       </template>
       <template #footer>
-        <Button type="submit" form="savings-contribution-form" label="Guardar aporte" icon="pi pi-wallet" class="app-button app-button--primary" :loading="savingsStore.submitting" :disabled="!selectedGoal" />
+        <Button type="submit" form="savings-contribution-form" :label="editingContributionId ? 'Guardar cambios' : 'Guardar aporte'" icon="pi pi-wallet" class="app-button app-button--primary" :loading="savingsStore.submitting" :disabled="!selectedGoal" />
         <Button type="button" label="Cancelar" icon="pi pi-times" severity="secondary" variant="outlined" class="app-button app-button--secondary" :disabled="savingsStore.submitting" @click="closeContributionDialog" />
       </template>
     </Dialog>
@@ -314,11 +371,15 @@ const router = useRouter()
 const goalFormError = ref('')
 const contributionFormError = ref('')
 const editingGoalId = ref('')
+const editingContributionId = ref('')
 const detailLoading = ref(false)
 const showGoalDialog = ref(false)
 const showContributionDialog = ref(false)
 const exportingGoalsFormat = ref('')
 const goalsExportError = ref('')
+const exportingContributionsFormat = ref('')
+const contributionsExportError = ref('')
+const contributionFeedback = ref('')
 
 const goalForm = reactive({
   name: '',
@@ -338,7 +399,9 @@ const isOverviewRoute = computed(() => route.name === 'savings-goals')
 const routeGoalId = computed(() => String(route.params.goalId || ''))
 const selectedGoal = computed(() => goals.value.find((goal) => goal.id === routeGoalId.value) || null)
 const selectedProgress = computed(() => savingsStore.progressByGoalId[routeGoalId.value] || null)
-const selectedContributions = computed(() => savingsStore.contributionsByGoalId[routeGoalId.value] || [])
+const selectedContributions = computed(() => [
+  ...(savingsStore.contributionsByGoalId[routeGoalId.value] || []),
+].reverse())
 const remainingAmount = computed(() => Math.max(0, Number(selectedProgress.value?.target_amount ?? selectedGoal.value?.target_amount ?? 0) - Number(selectedProgress.value?.current_amount ?? 0)))
 const activeGoalsCount = computed(() => goals.value.filter((goal) => (goalProgress(goal.id).status || goal.status) === 'active').length)
 const completedGoalsCount = computed(() => goals.value.filter((goal) => (goalProgress(goal.id).status || goal.status) === 'completed').length)
@@ -428,6 +491,26 @@ async function handleGoalsExport(format) {
   }
 }
 
+async function handleContributionsExport(format) {
+  if (!routeGoalId.value) {
+    return
+  }
+
+  contributionsExportError.value = ''
+  exportingContributionsFormat.value = format
+  try {
+    const blob = await savingsService.exportGoalContributions(routeGoalId.value, format)
+    downloadBlob(
+      blob,
+      `habitflow-savings-contributions-${routeGoalId.value}-${getLocalDateString()}.${format}`,
+    )
+  } catch {
+    contributionsExportError.value = 'No fue posible exportar los aportes.'
+  } finally {
+    exportingContributionsFormat.value = ''
+  }
+}
+
 function startGoalEdit(goal) {
   editingGoalId.value = goal.id
   goalForm.name = goal.name
@@ -439,14 +522,34 @@ function startGoalEdit(goal) {
 }
 
 function openContributionDialog() {
-  contributionFormError.value = ''
+  resetContributionForm()
+  contributionFeedback.value = ''
   if (selectedGoal.value) {
     showContributionDialog.value = true
   }
 }
 
 function closeContributionDialog() {
+  resetContributionForm()
   showContributionDialog.value = false
+}
+
+function startContributionEdit(contribution) {
+  contributionFeedback.value = ''
+  editingContributionId.value = contribution.id
+  contributionForm.amount = contribution.amount
+  contributionForm.note = contribution.note ?? ''
+  contributionForm.contributionDate = contribution.contribution_date
+  contributionFormError.value = ''
+  showContributionDialog.value = true
+}
+
+function resetContributionForm() {
+  editingContributionId.value = ''
+  contributionForm.amount = null
+  contributionForm.note = ''
+  contributionForm.contributionDate = getLocalDateString()
+  contributionFormError.value = ''
 }
 
 function openGoalDetail(goalId) {
@@ -533,16 +636,38 @@ async function handleContributionSubmit() {
     return
   }
 
+  if (contributionForm.contributionDate > getLocalDateString()) {
+    contributionFormError.value = 'La fecha del aporte no puede estar en el futuro.'
+    return
+  }
+
   try {
-    await savingsStore.addContribution(routeGoalId.value, {
+    const payload = {
       amount,
       note: note || null,
       contribution_date: contributionForm.contributionDate,
-    })
-    contributionForm.amount = null
-    contributionForm.note = ''
-    contributionForm.contributionDate = getLocalDateString()
+    }
+    await (editingContributionId.value
+      ? savingsStore.updateContribution(routeGoalId.value, editingContributionId.value, payload)
+      : savingsStore.addContribution(routeGoalId.value, payload))
+    contributionFeedback.value = editingContributionId.value
+      ? 'Aporte actualizado.'
+      : 'Aporte registrado.'
+    resetContributionForm()
     showContributionDialog.value = false
+  } catch {
+    return
+  }
+}
+
+async function handleDeleteContribution(contribution) {
+  if (!routeGoalId.value || !window.confirm('¿Eliminar este aporte?')) {
+    return
+  }
+
+  try {
+    await savingsStore.deleteContribution(routeGoalId.value, contribution.id)
+    contributionFeedback.value = 'Aporte eliminado.'
   } catch {
     return
   }

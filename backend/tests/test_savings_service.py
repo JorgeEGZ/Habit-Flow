@@ -5,10 +5,15 @@ import pytest
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SavingGoalNotFound, ValidationError
+from app.core.exceptions import SavingContributionNotFound, SavingGoalNotFound, ValidationError
 from app.core.security import hash_password
 from app.modules.savings import service as savings_service
-from app.modules.savings.schemas import SavingContributionIn, SavingGoalCreate, SavingGoalUpdate
+from app.modules.savings.schemas import (
+    SavingContributionIn,
+    SavingContributionUpdate,
+    SavingGoalCreate,
+    SavingGoalUpdate,
+)
 from app.modules.users.models import User
 
 
@@ -188,3 +193,99 @@ async def test_delete_goal_cascades_contributions(session: AsyncSession) -> None
 
     with pytest.raises(SavingGoalNotFound):
         await savings_service.get_goal(session, user_id=user.id, goal_id=goal.id)
+
+
+async def test_update_contribution_recalculates_progress_and_status(session: AsyncSession) -> None:
+    user = await _make_user(session, "contribution-update@example.com")
+    goal = await savings_service.create_goal(
+        session,
+        user_id=user.id,
+        payload=SavingGoalCreate(name="Trip", target_amount=100),
+    )
+    contribution = await savings_service.add_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal.id,
+        payload=SavingContributionIn(
+            amount=100,
+            note="  Initial deposit  ",
+            contribution_date=date(2026, 6, 17),
+        ),
+    )
+    assert contribution.note == "Initial deposit"
+
+    updated = await savings_service.update_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal.id,
+        contribution_id=contribution.id,
+        payload=SavingContributionUpdate(amount=60, note="   "),
+    )
+    progress = await savings_service.get_progress(session, user_id=user.id, goal_id=goal.id)
+    refreshed_goal = await savings_service.get_goal(session, user_id=user.id, goal_id=goal.id)
+
+    assert updated.amount == 60
+    assert updated.note is None
+    assert progress.current_amount == 60
+    assert progress.status == "active"
+    assert refreshed_goal.status == "active"
+
+
+async def test_delete_contribution_recalculates_progress(session: AsyncSession) -> None:
+    user = await _make_user(session, "contribution-delete@example.com")
+    goal = await savings_service.create_goal(
+        session,
+        user_id=user.id,
+        payload=SavingGoalCreate(name="Laptop", target_amount=100),
+    )
+    contribution = await savings_service.add_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal.id,
+        payload=SavingContributionIn(amount=100, contribution_date=date(2026, 6, 17)),
+    )
+
+    await savings_service.delete_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal.id,
+        contribution_id=contribution.id,
+    )
+    progress = await savings_service.get_progress(session, user_id=user.id, goal_id=goal.id)
+
+    assert progress.current_amount == 0
+    assert progress.status == "active"
+    with pytest.raises(SavingContributionNotFound):
+        await savings_service.delete_contribution(
+            session,
+            user_id=user.id,
+            goal_id=goal.id,
+            contribution_id=contribution.id,
+        )
+
+
+async def test_contribution_rejects_future_dates_and_allows_historical_dates(
+    session: AsyncSession,
+) -> None:
+    user = await _make_user(session, "contribution-dates@example.com")
+    goal = await savings_service.create_goal(
+        session,
+        user_id=user.id,
+        payload=SavingGoalCreate(name="Reserve", target_amount=100),
+    )
+
+    historical = await savings_service.add_contribution(
+        session,
+        user_id=user.id,
+        goal_id=goal.id,
+        payload=SavingContributionIn(amount=10, contribution_date=date(2020, 1, 1)),
+    )
+    assert historical.contribution_date == date(2020, 1, 1)
+
+    with pytest.raises(ValidationError):
+        await savings_service.add_contribution(
+            session,
+            user_id=user.id,
+            goal_id=goal.id,
+            payload=SavingContributionIn(amount=10, contribution_date=date(2999, 1, 1)),
+        )
