@@ -1,0 +1,29 @@
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+
+    client_max_body_size 10m;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    location = /index.html {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+    }
+
+    location ~* \.(?:css|js|mjs|png|jpg|jpeg|gif|ico|svg|woff2?|ttf)$ {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        expires 1h;
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}
