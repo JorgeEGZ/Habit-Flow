@@ -144,6 +144,15 @@ const router = createRouter({
           },
         },
         {
+          path: 'finances/reports',
+          name: 'finances-reports',
+          component: () => import('../pages/finances/FinancesPage.vue'),
+          meta: {
+            title: 'Reportes',
+            section: 'finances',
+          },
+        },
+        {
           path: 'finances/recurring',
           name: 'finances-recurring',
           component: () => import('../pages/finances/FinancesPage.vue'),

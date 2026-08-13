@@ -39,6 +39,134 @@ async def test_spending_by_category_requires_bearer(client: AsyncClient) -> None
     assert response.status_code == 401
 
 
+async def test_monthly_report_requires_bearer(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/finances/reports/monthly")
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
+async def test_monthly_report_rejects_invalid_month(client: AsyncClient, month: str) -> None:
+    token = await _register_and_login(client, email=f"invalid-report-{month}@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly",
+        headers=_auth_headers(token),
+        params={"month": month},
+    )
+    assert response.status_code == 422
+
+
+async def test_monthly_report_uses_app_month_and_empty_values(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 1, 22))
+    token = await _register_and_login(client, email="report-empty@example.com")
+    response = await client.get("/api/v1/finances/reports/monthly", headers=_auth_headers(token))
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["month"] == "2026-01"
+    assert body["previous_month"] == "2025-12"
+    assert body["period_start"] == "2026-01-01"
+    assert body["period_end"] == "2026-01-31"
+    assert body["current"] == {
+        "total_income": 0, "total_expenses": 0, "net": 0,
+        "transaction_count": 0, "income_transaction_count": 0, "expense_transaction_count": 0,
+    }
+    assert body["comparisons"]["income"]["percentage_change"] is None
+
+
+async def test_monthly_report_aggregates_transactions_spending_and_budgets(
+    client: AsyncClient,
+) -> None:
+    token = await _register_and_login(client, email="report-aggregate@example.com")
+    headers = _auth_headers(token)
+    account = await client.post(
+        "/api/v1/finances/accounts",
+        headers=headers,
+        json={"name": "Cash", "type": "cash", "initial_balance": 0},
+    )
+    food = await client.post(
+        "/api/v1/finances/categories",
+        headers=headers,
+        json={"name": "Food", "type": "expense"},
+    )
+    transport = await client.post(
+        "/api/v1/finances/categories",
+        headers=headers,
+        json={"name": "Transport", "type": "expense"},
+    )
+    salary = await client.post(
+        "/api/v1/finances/categories",
+        headers=headers,
+        json={"name": "Salary", "type": "income"},
+    )
+    account_id = account.json()["id"]
+
+    async def create_transaction(
+        *, category_id: str, transaction_type: str, amount: int, transaction_date: str
+    ) -> None:
+        response = await client.post(
+            "/api/v1/finances/transactions",
+            headers=headers,
+            json={
+                "account_id": account_id,
+                "category_id": category_id,
+                "type": transaction_type,
+                "amount": amount,
+                "transaction_date": transaction_date,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    await create_transaction(
+        category_id=salary.json()["id"], transaction_type="income", amount=1000, transaction_date="2026-07-01"
+    )
+    await create_transaction(
+        category_id=food.json()["id"], transaction_type="expense", amount=300, transaction_date="2026-07-31"
+    )
+    await create_transaction(
+        category_id=transport.json()["id"], transaction_type="expense", amount=50, transaction_date="2026-07-12"
+    )
+    await create_transaction(
+        category_id=food.json()["id"], transaction_type="expense", amount=200, transaction_date="2026-06-30"
+    )
+    await create_transaction(
+        category_id=food.json()["id"], transaction_type="expense", amount=999, transaction_date="2026-08-01"
+    )
+    budget = await client.post(
+        "/api/v1/finances/budgets",
+        headers=headers,
+        json={"category_id": food.json()["id"], "month": "2026-07", "amount": 400},
+    )
+    assert budget.status_code == 201, budget.text
+
+    response = await client.get(
+        "/api/v1/finances/reports/monthly",
+        headers=headers,
+        params={"month": "2026-07"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["current"] == {
+        "total_income": 1000,
+        "total_expenses": 350,
+        "net": 650,
+        "transaction_count": 3,
+        "income_transaction_count": 1,
+        "expense_transaction_count": 2,
+    }
+    assert body["previous"]["total_expenses"] == 200
+    assert body["comparisons"]["expenses"] == {
+        "current_amount": 350,
+        "previous_amount": 200,
+        "absolute_change": 150,
+        "percentage_change": 75.0,
+    }
+    assert body["spending_by_category"]["total_expenses"] == 350
+    assert body["monthly_budgets"]["total_spent_amount"] == 300
+    assert body["monthly_budgets"]["budgets"][0]["remaining_amount"] == 100
+
+
 async def test_monthly_budgets_require_bearer(client: AsyncClient) -> None:
     response = await client.get("/api/v1/finances/budgets")
     assert response.status_code == 401

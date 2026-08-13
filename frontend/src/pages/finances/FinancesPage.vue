@@ -175,6 +175,16 @@
         </div>
       </section>
 
+      <MonthlyReportSection
+        v-else-if="isReportsWorkspace"
+        :report="financesStore.monthlyReport"
+        :loading="financesStore.loadingMonthlyReport"
+        :error="financesStore.monthlyReportError"
+        :month="reportMonth"
+        @month-change="handleReportMonthChange"
+        @retry="loadMonthlyReport"
+      />
+
       <section v-else-if="isBudgetsWorkspace" class="finance-tab-panel finance-budget-panel">
         <header class="finance-panel-header">
           <div>
@@ -835,6 +845,7 @@ import AppIconButton from '../../components/ui/AppIconButton.vue'
 import AppSectionHeader from '../../components/ui/AppSectionHeader.vue'
 import AppStatusBadge from '../../components/ui/AppStatusBadge.vue'
 import ExportActions from '../../components/ui/ExportActions.vue'
+import MonthlyReportSection from './components/MonthlyReportSection.vue'
 import { useDashboardStore } from '../../stores/dashboard'
 import { useFinancesStore } from '../../stores/finances'
 import * as financesService from '../../services/finances'
@@ -876,6 +887,7 @@ const appliedBudgetMonth = ref('')
 const loadingMonthlyBudgetCategories = ref(false)
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
+const reportMonth = ref('')
 const deleteDialogVisible = ref(false)
 const pendingDelete = ref(null)
 
@@ -973,6 +985,7 @@ const sortOptions = [
 const financeNavigation = computed(() => [
   { label: 'Movimientos', routeName: 'finances-movements', active: route.name === 'finances-movements' },
   { label: 'Presupuestos', routeName: 'finances-budgets', active: route.name === 'finances-budgets' },
+  { label: 'Reportes', routeName: 'finances-reports', active: route.name === 'finances-reports' },
   { label: 'Recurrentes', routeName: 'finances-recurring', active: route.name === 'finances-recurring' },
   { label: 'Cuentas', routeName: 'finances-accounts', active: route.name === 'finances-accounts' },
   { label: 'Categorías', routeName: 'finances-categories', active: route.name === 'finances-categories' },
@@ -980,6 +993,7 @@ const financeNavigation = computed(() => [
 
 const isMovementsWorkspace = computed(() => route.name === 'finances-movements')
 const isBudgetsWorkspace = computed(() => route.name === 'finances-budgets')
+const isReportsWorkspace = computed(() => route.name === 'finances-reports')
 const isRecurringWorkspace = computed(() => route.name === 'finances-recurring')
 const isAccountsWorkspace = computed(() => route.name === 'finances-accounts')
 
@@ -1168,8 +1182,26 @@ watch(
     if (routeName === 'finances-budgets') {
       void loadMonthlyBudgets()
     }
+    if (routeName === 'finances-reports') {
+      void loadMonthlyReport()
+    }
   },
 )
+
+async function loadMonthlyReport() {
+  try {
+    const report = await financesStore.fetchMonthlyReport(reportMonth.value || undefined)
+    if (!reportMonth.value) reportMonth.value = report.month
+  } catch {
+    return
+  }
+}
+
+function handleReportMonthChange(month) {
+  if (!month || month === reportMonth.value) return
+  reportMonth.value = month
+  void loadMonthlyReport()
+}
 
 function accountTypeLabel(type) {
   return accountTypes.find((entry) => entry.value === type)?.label ?? type
@@ -1682,6 +1714,7 @@ async function loadFinanceData() {
       dashboardStore.fetchFinances(),
       loadSpendingByCategory(),
       isBudgetsWorkspace.value ? loadMonthlyBudgets() : Promise.resolve(),
+      isReportsWorkspace.value ? loadMonthlyReport() : Promise.resolve(),
       isRecurringWorkspace.value ? loadUpcomingRecurring() : Promise.resolve(),
     ])
   } finally {

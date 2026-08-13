@@ -219,6 +219,42 @@ class SpendingByCategoryRead(BaseModel):
     categories: list[SpendingByCategoryItem]
 
 
+class MonthlyTransactionSummary(BaseModel):
+    total_income: int = Field(ge=0)
+    total_expenses: int = Field(ge=0)
+    net: int
+    transaction_count: int = Field(ge=0)
+    income_transaction_count: int = Field(ge=0)
+    expense_transaction_count: int = Field(ge=0)
+
+
+class MonthlyMetricComparison(BaseModel):
+    current_amount: int
+    previous_amount: int
+    absolute_change: int
+    percentage_change: float | None = None
+
+
+class MonthlyReportComparisons(BaseModel):
+    income: MonthlyMetricComparison
+    expenses: MonthlyMetricComparison
+    net: MonthlyMetricComparison
+
+
+class MonthlyFinancialReportRead(BaseModel):
+    month: str
+    period_start: date
+    period_end: date
+    previous_month: str
+    previous_period_start: date
+    previous_period_end: date
+    current: MonthlyTransactionSummary
+    previous: MonthlyTransactionSummary
+    comparisons: MonthlyReportComparisons
+    spending_by_category: SpendingByCategoryRead
+    monthly_budgets: MonthlyCategoryBudgetsRead
+
+
 class UpcomingRecurringOccurrence(BaseModel):
     recurring_id: uuid.UUID
     occurrence_date: date

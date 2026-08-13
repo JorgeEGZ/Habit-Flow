@@ -73,6 +73,13 @@ export async function getMonthlyBudgets(month) {
   return data
 }
 
+export async function getMonthlyReport(month) {
+  const { data } = await api.get('/finances/reports/monthly', {
+    params: month ? { month } : undefined,
+  })
+  return data
+}
+
 export async function createMonthlyBudget(payload) {
   const { data } = await api.post('/finances/budgets', payload)
   return data

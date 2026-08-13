@@ -89,6 +89,18 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
   await dialog.getByRole('button', { name: 'Crear presupuesto' }).click()
   await expect(page.getByText(categoryName, { exact: true })).toBeVisible()
 
+  await page.goto('/finances/reports')
+  await expect(page.getByRole('heading', { name: 'Reporte mensual' })).toBeVisible()
+  const reportMonth = page.getByLabel('Mes')
+  await expect(reportMonth).toHaveValue(/^\d{4}-\d{2}$/)
+  const reportResponse = page.waitForResponse((response) => (
+    response.url().includes('/finances/reports/monthly?month=2026-01')
+    && response.status() === 200
+  ))
+  await reportMonth.fill('2026-01')
+  await reportResponse
+  await expect(page.getByText('No hay gastos registrados en este mes.')).toBeVisible()
+
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: 'Presupuestos del mes' })).toBeVisible()
 })

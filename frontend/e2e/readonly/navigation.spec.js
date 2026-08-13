@@ -12,6 +12,7 @@ test('@readonly navega por los módulos autenticados', async ({ page }) => {
     ['/savings/goals', 'Ahorros'],
     ['/finances/movements', 'Finanzas'],
     ['/finances/budgets', 'Finanzas'],
+    ['/finances/reports', 'Finanzas'],
     ['/finances/recurring', 'Finanzas'],
     ['/finances/accounts', 'Finanzas'],
     ['/finances/categories', 'Finanzas'],
