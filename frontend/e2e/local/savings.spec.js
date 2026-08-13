@@ -45,8 +45,14 @@ test('gestiona y exporta el historial de aportes de una meta', async ({ page }) 
   const workbookDownload = await workbookDownloadPromise
   expect(workbookDownload.suggestedFilename()).toMatch(/^habitflow-savings-contributions-.*\.xlsx$/)
 
-  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Eliminar aporte' }).click()
+  const deleteDialog = page.getByRole('dialog', { name: 'Confirmar eliminación' })
+  await expect(deleteDialog.getByText('¿Eliminar este aporte?')).toBeVisible()
+  await deleteDialog.getByRole('button', { name: 'Cancelar' }).click()
+  await expect(page.getByText('Aporte corregido', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Eliminar aporte' }).click()
+  await page.getByRole('dialog', { name: 'Confirmar eliminación' }).getByRole('button', { name: 'Eliminar' }).click()
   await expect(page.getByText('Aporte eliminado.')).toBeVisible()
   await expect(page.getByText('Esta meta todavía no tiene contribuciones.')).toBeVisible()
 })

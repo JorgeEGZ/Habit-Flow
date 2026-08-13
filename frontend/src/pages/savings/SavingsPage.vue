@@ -1,18 +1,17 @@
 <template>
   <section class="page-stack savings-page">
     <section v-if="isOverviewRoute" class="savings-overview" aria-labelledby="savings-overview-title">
-      <header class="savings-workspace-header">
+      <AppSectionHeader custom class="savings-workspace-header">
         <div>
           <p class="savings-workspace-header__eyebrow">Planificación financiera</p>
           <h1 id="savings-overview-title">Ahorros</h1>
           <p>Organiza tus metas y consulta el progreso de cada objetivo.</p>
         </div>
         <div class="savings-header-actions">
-          <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingGoalsFormat)" @click="handleGoalsExport('csv')" />
-          <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingGoalsFormat)" @click="handleGoalsExport('xlsx')" />
+          <ExportActions :loading-format="exportingGoalsFormat" @export="handleGoalsExport" />
           <Button type="button" label="Nueva meta" icon="pi pi-plus" @click="openCreateGoalDialog" />
         </div>
-      </header>
+      </AppSectionHeader>
 
       <p v-if="savingsStore.error" class="dashboard-page__alert">
         {{ savingsStore.error }}
@@ -49,9 +48,7 @@
             </article>
           </div>
 
-          <div v-else-if="!goals.length" class="dashboard-empty">
-            No tienes metas de ahorro todavía.
-          </div>
+          <AppEmptyState v-else-if="!goals.length" title="No tienes metas de ahorro todavía." compact />
 
           <div v-else class="savings-goal-list savings-goal-list--grid">
             <article
@@ -70,9 +67,7 @@
                   <p v-if="goal.description">{{ goal.description }}</p>
                 </div>
 
-                <span class="goal-status-badge" :class="statusToneClass(goalProgress(goal.id).status || goal.status)">
-                  {{ goalStatusLabel(goalProgress(goal.id).status || goal.status) }}
-                </span>
+                <AppStatusBadge :label="goalStatusLabel(goalProgress(goal.id).status || goal.status)" :tone="goalStatusTone(goalProgress(goal.id).status || goal.status)" />
               </header>
 
               <div class="savings-goal-card__meta">
@@ -126,7 +121,7 @@
         <div v-if="selectedGoal" class="savings-header-actions">
           <Button type="button" label="Registrar aporte" icon="pi pi-wallet" @click="openContributionDialog" />
           <Button type="button" label="Editar meta" icon="pi pi-pencil" severity="secondary" variant="outlined" @click="startGoalEdit(selectedGoal)" />
-          <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar meta" :disabled="savingsStore.submitting" @click="handleDeleteGoal(selectedGoal)" />
+          <AppIconButton icon="pi pi-trash" label="Eliminar meta" tone="danger" :disabled="savingsStore.submitting" @click="handleDeleteGoal(selectedGoal)" />
         </div>
       </header>
 
@@ -141,9 +136,7 @@
         </article>
       </div>
 
-      <div v-else-if="!selectedGoal" class="dashboard-empty">
-        No fue posible encontrar esta meta de ahorro.
-      </div>
+      <AppEmptyState v-else-if="!selectedGoal" title="No fue posible encontrar esta meta de ahorro." compact />
 
       <template v-else>
         <Card class="savings-detail-card">
@@ -169,9 +162,7 @@
               </div>
 
               <div class="savings-detail__goal-meta">
-                <span class="goal-status-badge" :class="statusToneClass(selectedProgress?.status || selectedGoal.status)">
-                  {{ goalStatusLabel(selectedProgress?.status || selectedGoal.status) }}
-                </span>
+                <AppStatusBadge :label="goalStatusLabel(selectedProgress?.status || selectedGoal.status)" :tone="goalStatusTone(selectedProgress?.status || selectedGoal.status)" />
                 <span>Fecha objetivo: {{ selectedGoal.target_date ? formatDateShort(selectedGoal.target_date) : 'Sin fecha' }}</span>
               </div>
 
@@ -192,30 +183,7 @@
           <template #content>
             <div class="savings-contribution-toolbar">
               <p>Administra y exporta los aportes registrados para esta meta.</p>
-              <div class="savings-contribution-toolbar__actions">
-                <Button
-                  type="button"
-                  label="Exportar CSV"
-                  icon="pi pi-download"
-                  severity="secondary"
-                  variant="outlined"
-                  class="app-button app-button--secondary app-button--compact"
-                  :loading="exportingContributionsFormat === 'csv'"
-                  :disabled="Boolean(exportingContributionsFormat)"
-                  @click="handleContributionsExport('csv')"
-                />
-                <Button
-                  type="button"
-                  label="Exportar Excel"
-                  icon="pi pi-file-excel"
-                  severity="secondary"
-                  variant="outlined"
-                  class="app-button app-button--secondary app-button--compact"
-                  :loading="exportingContributionsFormat === 'xlsx'"
-                  :disabled="Boolean(exportingContributionsFormat)"
-                  @click="handleContributionsExport('xlsx')"
-                />
-              </div>
+              <div class="savings-contribution-toolbar__actions"><ExportActions compact :loading-format="exportingContributionsFormat" @export="handleContributionsExport" /></div>
             </div>
             <p v-if="contributionsExportError" class="dashboard-page__alert">
               {{ contributionsExportError }}
@@ -226,9 +194,7 @@
             <div v-if="detailLoading" class="dashboard-panel-state">
               Cargando historial de contribuciones...
             </div>
-            <div v-else-if="!selectedContributions.length" class="dashboard-empty">
-              Esta meta todavía no tiene contribuciones.
-            </div>
+            <AppEmptyState v-else-if="!selectedContributions.length" title="Esta meta todavía no tiene contribuciones." compact />
             <ul v-else class="savings-contribution-list">
               <li v-for="contribution in selectedContributions" :key="contribution.id" class="savings-contribution">
                 <div class="savings-contribution__content">
@@ -238,26 +204,8 @@
                 <div class="savings-contribution__meta">
                   <small>{{ formatDateShort(contribution.contribution_date) }}</small>
                   <div class="savings-contribution__actions">
-                    <Button
-                      type="button"
-                      icon="pi pi-pencil"
-                      severity="secondary"
-                      variant="outlined"
-                      class="app-button app-button--icon"
-                      aria-label="Editar aporte"
-                      :disabled="savingsStore.submitting"
-                      @click="startContributionEdit(contribution)"
-                    />
-                    <Button
-                      type="button"
-                      icon="pi pi-trash"
-                      severity="danger"
-                      variant="outlined"
-                      class="app-button app-button--icon app-button--danger"
-                      aria-label="Eliminar aporte"
-                      :disabled="savingsStore.submitting"
-                      @click="handleDeleteContribution(contribution)"
-                    />
+                    <AppIconButton icon="pi pi-pencil" label="Editar aporte" :disabled="savingsStore.submitting" @click="startContributionEdit(contribution)" />
+                    <AppIconButton icon="pi pi-trash" label="Eliminar aporte" tone="danger" :disabled="savingsStore.submitting" @click="handleDeleteContribution(contribution)" />
                   </div>
                 </div>
               </li>
@@ -266,6 +214,17 @@
         </Card>
       </template>
     </section>
+
+    <AppConfirmDialog
+      v-model:visible="deleteDialogVisible"
+      title="Confirmar eliminación"
+      :message="pendingDelete?.message || ''"
+      confirm-label="Eliminar"
+      :loading="savingsStore.submitting"
+      destructive
+      @confirm="confirmPendingDelete"
+      @cancel="clearPendingDelete"
+    />
 
     <Dialog
       v-model:visible="showGoalDialog"
@@ -359,6 +318,12 @@ import { computed, reactive, ref, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import { useRoute, useRouter } from 'vue-router'
 
+import AppConfirmDialog from '../../components/ui/AppConfirmDialog.vue'
+import AppEmptyState from '../../components/ui/AppEmptyState.vue'
+import AppIconButton from '../../components/ui/AppIconButton.vue'
+import AppSectionHeader from '../../components/ui/AppSectionHeader.vue'
+import AppStatusBadge from '../../components/ui/AppStatusBadge.vue'
+import ExportActions from '../../components/ui/ExportActions.vue'
 import { useSavingsStore } from '../../stores/savings'
 import * as savingsService from '../../services/savings'
 import { downloadBlob } from '../../utils/download'
@@ -380,6 +345,8 @@ const goalsExportError = ref('')
 const exportingContributionsFormat = ref('')
 const contributionsExportError = ref('')
 const contributionFeedback = ref('')
+const deleteDialogVisible = ref(false)
+const pendingDelete = ref(null)
 
 const goalForm = reactive({
   name: '',
@@ -456,11 +423,8 @@ function goalStatusLabel(status) {
   return status === 'completed' ? 'Completada' : 'Activa'
 }
 
-function statusToneClass(status) {
-  return {
-    'goal-status-badge--completed': status === 'completed',
-    'goal-status-badge--active': status !== 'completed',
-  }
+function goalStatusTone(status) {
+  return status === 'completed' ? 'success' : 'info'
 }
 
 function clearGoalForm() {
@@ -596,12 +560,23 @@ async function handleGoalSubmit() {
   }
 }
 
-async function handleDeleteGoal(goal) {
-  goalFormError.value = ''
+function requestDelete(kind, entity, message) {
+  pendingDelete.value = { kind, entity, message }
+  deleteDialogVisible.value = true
+}
 
-  if (!window.confirm(`¿Eliminar la meta "${goal.name}"?`)) {
-    return
+function clearPendingDelete() {
+  if (!savingsStore.submitting) {
+    pendingDelete.value = null
   }
+}
+
+function handleDeleteGoal(goal) {
+  requestDelete('goal', goal, `¿Eliminar la meta "${goal.name}"?`)
+}
+
+async function deleteGoal(goal) {
+  goalFormError.value = ''
 
   try {
     await savingsStore.deleteGoal(goal.id)
@@ -660,14 +635,32 @@ async function handleContributionSubmit() {
   }
 }
 
-async function handleDeleteContribution(contribution) {
-  if (!routeGoalId.value || !window.confirm('¿Eliminar este aporte?')) {
+function handleDeleteContribution(contribution) {
+  if (!routeGoalId.value) {
     return
   }
+  requestDelete('contribution', contribution, '¿Eliminar este aporte?')
+}
 
+async function deleteContribution(contribution) {
+  if (!routeGoalId.value) return
   try {
     await savingsStore.deleteContribution(routeGoalId.value, contribution.id)
     contributionFeedback.value = 'Aporte eliminado.'
+  } catch {
+    return
+  }
+}
+
+async function confirmPendingDelete() {
+  const request = pendingDelete.value
+  if (!request) return
+
+  try {
+    if (request.kind === 'goal') await deleteGoal(request.entity)
+    if (request.kind === 'contribution') await deleteContribution(request.entity)
+    deleteDialogVisible.value = false
+    pendingDelete.value = null
   } catch {
     return
   }

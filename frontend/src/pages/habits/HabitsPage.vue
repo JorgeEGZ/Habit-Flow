@@ -203,6 +203,17 @@
       </Card>
     </section>
 
+    <AppConfirmDialog
+      v-model:visible="deleteDialogVisible"
+      title="Confirmar eliminación"
+      :message="pendingHabitDeleteMessage"
+      confirm-label="Eliminar"
+      :loading="habitsStore.submitting"
+      destructive
+      @confirm="confirmHabitDelete"
+      @cancel="clearPendingHabitDelete"
+    />
+
     <Dialog v-model:visible="showHabitDialog" modal dismissableMask class="app-dialog" :header="editingHabitId ? 'Editar hábito' : 'Crear hábito'">
       <p class="habits-form-card__subtitle">
         {{ editingHabitId ? 'Actualiza los datos del hábito seleccionado.' : 'Crea un hábito diario o semanal.' }}
@@ -256,6 +267,7 @@ import Dialog from 'primevue/dialog'
 import { useRoute, useRouter } from 'vue-router'
 
 import SecondaryNav from '../../components/common/SecondaryNav.vue'
+import AppConfirmDialog from '../../components/ui/AppConfirmDialog.vue'
 import { useHabitsStore } from '../../stores/habits'
 import { getLocalDateString } from '../../utils/format'
 
@@ -266,6 +278,8 @@ const router = useRouter()
 const formError = ref('')
 const editingHabitId = ref('')
 const showHabitDialog = ref(false)
+const deleteDialogVisible = ref(false)
+const pendingHabitDelete = ref(null)
 const form = reactive({
   title: '',
   description: '',
@@ -283,6 +297,7 @@ const isManageRoute = computed(() => route.name === 'habits-manage')
 const isDetailRoute = computed(() => route.name === 'habit-detail')
 const routeHabitId = computed(() => String(route.params.habitId || ''))
 const selectedHabit = computed(() => habits.value.find((habit) => habit.id === routeHabitId.value) || null)
+const pendingHabitDeleteMessage = computed(() => pendingHabitDelete.value ? `¿Eliminar el hábito "${pendingHabitDelete.value.title}"?` : '')
 const isBooleanWeeklyForm = computed(() => form.trackingMode === 'boolean' && form.frequency === 'weekly')
 const showsGoalFields = computed(() => isBooleanWeeklyForm.value || form.trackingMode === 'numeric')
 const habitNavigation = computed(() => [
@@ -512,11 +527,21 @@ async function handleSubmit() {
   }
 }
 
-async function handleDeleteHabit(habit) {
-  formError.value = ''
-  if (!window.confirm(`¿Eliminar el hábito "${habit.title}"?`)) {
-    return
+function handleDeleteHabit(habit) {
+  pendingHabitDelete.value = habit
+  deleteDialogVisible.value = true
+}
+
+function clearPendingHabitDelete() {
+  if (!habitsStore.submitting) {
+    pendingHabitDelete.value = null
   }
+}
+
+async function confirmHabitDelete() {
+  const habit = pendingHabitDelete.value
+  if (!habit) return
+  formError.value = ''
   try {
     await habitsStore.deleteHabit(habit.id)
     if (editingHabitId.value === habit.id) {
@@ -525,6 +550,8 @@ async function handleDeleteHabit(habit) {
     if (routeHabitId.value === habit.id) {
       await router.push({ name: 'habits-manage' })
     }
+    deleteDialogVisible.value = false
+    pendingHabitDelete.value = null
   } catch {
     return
   }

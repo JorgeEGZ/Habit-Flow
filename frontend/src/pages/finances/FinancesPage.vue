@@ -63,9 +63,7 @@
         <p v-else-if="financesStore.spendingByCategoryError" class="finance-spending-insight__error" role="alert">
           {{ financesStore.spendingByCategoryError }}
         </p>
-        <div v-else-if="!spendingByCategory?.categories.length" class="dashboard-empty">
-          No hay gastos registrados en este mes.
-        </div>
+        <AppEmptyState v-else-if="!spendingByCategory?.categories.length" title="No hay gastos registrados en este mes." compact />
         <div v-else class="finance-spending-list">
           <div class="finance-spending-list__summary">
             <span>Gastos del mes</span>
@@ -102,17 +100,16 @@
         v-if="isMovementsWorkspace"
         class="finance-tab-panel"
       >
-        <header class="finance-panel-header">
+        <AppSectionHeader custom class="finance-panel-header">
           <div>
             <h2>Movimientos</h2>
             <p>Revisa y administra los registros financieros más recientes.</p>
           </div>
           <div class="finance-panel-header__actions">
-            <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingTransactionFormat)" @click="openTransactionExportDialog" />
-            <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingTransactionFormat)" @click="openTransactionExportDialog" />
+            <ExportActions :loading-format="exportingTransactionFormat" @export="openTransactionExportDialog" />
             <Button type="button" label="Nuevo movimiento" icon="pi pi-plus" @click="openCreateTransactionDialog" />
           </div>
-        </header>
+        </AppSectionHeader>
 
         <div class="finance-toolbar">
           <div class="finance-toolbar__filters">
@@ -158,8 +155,8 @@
             <span class="finance-skeleton__line"></span>
           </article>
         </div>
-        <div v-else-if="!transactions.length" class="dashboard-empty">No tienes movimientos registrados todavía.</div>
-        <div v-else-if="!visibleTransactions.length" class="dashboard-empty">No hay movimientos que coincidan con los filtros actuales.</div>
+        <AppEmptyState v-else-if="!transactions.length" title="No tienes movimientos registrados todavía." compact />
+        <AppEmptyState v-else-if="!visibleTransactions.length" title="No hay movimientos que coincidan con los filtros actuales." compact />
         <div v-else class="finance-data-table finance-data-table--transactions">
           <div class="finance-data-table__head">
             <span>Movimiento</span><span>Cuenta</span><span>Categoría</span><span>Fecha</span><span>Monto</span><span>Acciones</span>
@@ -171,8 +168,8 @@
             <div class="finance-data-cell"><span>Fecha</span><p>{{ formatDateShort(transaction.transaction_date) }}</p></div>
             <div class="finance-data-cell finance-data-cell--amount"><span>Monto</span><strong :class="transactionAmountClass(transaction.type)">{{ formatTransactionAmount(transaction) }}</strong></div>
             <div class="finance-data-row__actions">
-              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar movimiento" @click="startTransactionEdit(transaction)" />
-              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar movimiento" :disabled="financesStore.submitting" @click="handleDeleteTransaction(transaction)" />
+              <AppIconButton icon="pi pi-pencil" label="Editar movimiento" @click="startTransactionEdit(transaction)" />
+              <AppIconButton icon="pi pi-trash" label="Eliminar movimiento" tone="danger" :disabled="financesStore.submitting" @click="handleDeleteTransaction(transaction)" />
             </div>
           </article>
         </div>
@@ -185,8 +182,7 @@
             <p>Define cuánto planeas gastar por categoría y compáralo con tus movimientos reales.</p>
           </div>
           <div class="finance-panel-header__actions">
-            <Button type="button" label="Exportar CSV" icon="pi pi-download" severity="secondary" variant="outlined" :disabled="Boolean(exportingBudgetFormat)" @click="handleMonthlyBudgetExport('csv')" />
-            <Button type="button" label="Exportar Excel" icon="pi pi-file-excel" severity="secondary" variant="outlined" :disabled="Boolean(exportingBudgetFormat)" @click="handleMonthlyBudgetExport('xlsx')" />
+            <ExportActions :loading-format="exportingBudgetFormat" @export="handleMonthlyBudgetExport" />
             <Button type="button" label="Nuevo presupuesto" icon="pi pi-plus" @click="openCreateMonthlyBudgetDialog" />
           </div>
         </header>
@@ -204,9 +200,7 @@
         <p v-else-if="financesStore.monthlyBudgetsError" class="finance-budget-panel__error" role="alert">
           {{ financesStore.monthlyBudgetsError }}
         </p>
-        <div v-else-if="!monthlyBudgets?.budgets.length" class="dashboard-empty">
-          No tienes presupuestos para este mes.
-        </div>
+        <AppEmptyState v-else-if="!monthlyBudgets?.budgets.length" title="No tienes presupuestos para este mes." compact />
         <template v-else>
           <div class="finance-budget-summary" aria-label="Resumen de presupuestos">
             <div><span>Presupuestado</span><strong>{{ formatCurrencyCop(monthlyBudgets.total_budget_amount) }}</strong></div>
@@ -225,10 +219,10 @@
               <div class="finance-data-cell finance-data-cell--amount"><span>Gastado</span><strong :class="budget.exceeded ? 'transaction-amount--expense' : ''">{{ formatCurrencyCop(budget.spent_amount) }}</strong></div>
               <div class="finance-data-cell finance-data-cell--amount"><span>{{ budget.exceeded ? 'Excedido' : 'Disponible' }}</span><strong :class="budget.exceeded ? 'transaction-amount--expense' : ''">{{ formatCurrencyCop(budget.exceeded ? budget.over_budget_amount : budget.remaining_amount) }}</strong></div>
               <div class="finance-data-cell finance-budget-usage"><span>Uso</span><strong>{{ formatPercentage(budget.usage_percentage) }}</strong><div class="finance-budget-usage__bar" role="progressbar" :aria-label="`${budget.category_name}: ${formatPercentage(budget.usage_percentage)} del presupuesto`" :aria-valuenow="budget.usage_percentage" aria-valuemin="0" aria-valuemax="100"><span :class="budgetProgressClass(budget)" :style="{ width: `${Math.min(budget.usage_percentage, 100)}%` }"></span></div></div>
-              <div class="finance-data-cell"><span>Estado</span><span class="finance-budget-status" :class="budgetStatusClass(budget)">{{ budgetStatusLabel(budget) }}</span></div>
+              <div class="finance-data-cell"><span>Estado</span><AppStatusBadge :label="budgetStatusLabel(budget)" :tone="budgetStatusTone(budget)" /></div>
               <div class="finance-data-row__actions">
-                <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar presupuesto" @click="startMonthlyBudgetEdit(budget)" />
-                <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar presupuesto" :disabled="financesStore.submitting" @click="handleDeleteMonthlyBudget(budget)" />
+                <AppIconButton icon="pi pi-pencil" label="Editar presupuesto" @click="startMonthlyBudgetEdit(budget)" />
+                <AppIconButton icon="pi pi-trash" label="Eliminar presupuesto" tone="danger" :disabled="financesStore.submitting" @click="handleDeleteMonthlyBudget(budget)" />
               </div>
             </article>
           </div>
@@ -268,9 +262,7 @@
           <p v-else-if="financesStore.upcomingRecurringError" class="finance-upcoming-insight__error" role="alert">
             {{ financesStore.upcomingRecurringError }}
           </p>
-          <div v-else-if="!upcomingRecurring?.date_groups.length" class="dashboard-empty">
-            No hay reglas activas con ocurrencias en los próximos {{ upcomingWindowDays }} días.
-          </div>
+          <AppEmptyState v-else-if="!upcomingRecurring?.date_groups.length" :title="`No hay reglas activas con ocurrencias en los próximos ${upcomingWindowDays} días.`" compact />
           <template v-else>
             <div class="finance-upcoming-summary" aria-label="Resumen de proyecciones">
               <div><span>Ingresos esperados</span><strong class="transaction-amount--income">{{ formatCurrencyCop(upcomingRecurring.total_income) }}</strong></div>
@@ -293,7 +285,7 @@
                     <strong :class="transactionAmountClass(occurrence.type)">{{ formatTransactionAmount(occurrence) }}</strong>
                   </div>
                   <div class="finance-upcoming-occurrence__action">
-                    <span v-if="occurrence.is_registered" class="recurring-status-pill recurring-status-pill--active">Registrado</span>
+                    <AppStatusBadge v-if="occurrence.is_registered" label="Registrado" tone="success" />
                     <Button
                       v-else
                       type="button"
@@ -323,7 +315,7 @@
         <div v-if="recurringLoading && !recurringRules.length" class="finance-skeleton-grid">
           <article v-for="index in 3" :key="index" class="finance-skeleton"><span class="finance-skeleton__line finance-skeleton__line--title"></span><span class="finance-skeleton__line"></span></article>
         </div>
-        <div v-else-if="!recurringRules.length" class="dashboard-empty">No tienes reglas recurrentes registradas todavía.</div>
+        <AppEmptyState v-else-if="!recurringRules.length" title="No tienes reglas recurrentes registradas todavía." compact />
         <div v-else class="finance-data-table finance-data-table--recurring">
           <div class="finance-data-table__head">
             <span>Regla</span><span>Cuenta</span><span>Categoría</span><span>Frecuencia</span><span>Estado</span><span>Monto</span><span>Acciones</span>
@@ -333,12 +325,12 @@
             <div class="finance-data-cell"><span>Cuenta</span><p>{{ accountLabel(rule.account_id) }}</p></div>
             <div class="finance-data-cell"><span>Categoría</span><p>{{ categoryLabel(rule.category_id) }}</p></div>
             <div class="finance-data-cell"><span>Frecuencia</span><p>{{ frequencyLabel(rule.frequency) }}</p></div>
-            <div class="finance-data-cell"><span>Estado</span><span class="recurring-status-pill" :class="recurringStatusClass(rule.is_active)">{{ rule.is_active ? 'Activa' : 'Pausada' }}</span></div>
+            <div class="finance-data-cell"><span>Estado</span><AppStatusBadge :label="rule.is_active ? 'Activa' : 'Pausada'" :tone="rule.is_active ? 'success' : 'neutral'" /></div>
             <div class="finance-data-cell finance-data-cell--amount"><span>Monto</span><strong :class="transactionAmountClass(rule.type)">{{ formatTransactionAmount(rule) }}</strong></div>
             <div class="finance-data-row__actions">
               <Button type="button" :label="rule.is_active ? 'Pausar' : 'Reanudar'" :icon="rule.is_active ? 'pi pi-pause' : 'pi pi-play'" severity="secondary" variant="outlined" class="app-button app-button--secondary app-button--compact finance-recurring-toggle" :aria-label="rule.is_active ? 'Pausar regla recurrente' : 'Reanudar regla recurrente'" :disabled="financesStore.submitting" @click="toggleRecurringActive(rule)" />
-              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar regla recurrente" @click="startRecurringEdit(rule)" />
-              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar regla recurrente" :disabled="financesStore.submitting" @click="handleDeleteRecurring(rule)" />
+              <AppIconButton icon="pi pi-pencil" label="Editar regla recurrente" @click="startRecurringEdit(rule)" />
+              <AppIconButton icon="pi pi-trash" label="Eliminar regla recurrente" tone="danger" :disabled="financesStore.submitting" @click="handleDeleteRecurring(rule)" />
             </div>
           </article>
         </div>
@@ -356,14 +348,14 @@
               <Button type="button" label="Nueva cuenta" icon="pi pi-plus" severity="secondary" variant="outlined" @click="openCreateAccountDialog" />
             </header>
             <div v-if="loadingFinanceData && !accounts.length" class="finance-skeleton-grid"><article v-for="index in 3" :key="index" class="finance-skeleton"><span class="finance-skeleton__line finance-skeleton__line--title"></span><span class="finance-skeleton__line"></span></article></div>
-            <div v-else-if="!accounts.length" class="dashboard-empty">No tienes cuentas registradas todavía.</div>
+            <AppEmptyState v-else-if="!accounts.length" title="No tienes cuentas registradas todavía." compact />
             <div v-else class="finance-compact-list">
               <article v-for="account in accounts" :key="account.id" class="finance-compact-row">
                 <div><strong>{{ account.name }}</strong><span>{{ accountTypeLabel(account.type) }} · Saldo inicial {{ formatCurrencyCop(account.initial_balance) }}</span></div>
                 <strong class="finance-compact-row__amount">{{ formatCurrencyCop(account.current_balance) }}</strong>
                 <div class="finance-compact-row__actions">
-              <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar cuenta" @click="startAccountEdit(account)" />
-              <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar cuenta" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
+              <AppIconButton icon="pi pi-pencil" label="Editar cuenta" @click="startAccountEdit(account)" />
+              <AppIconButton icon="pi pi-trash" label="Eliminar cuenta" tone="danger" :disabled="financesStore.submitting" @click="handleDeleteAccount(account)" />
                 </div>
               </article>
             </div>
@@ -374,7 +366,7 @@
               <Button type="button" label="Nueva categoría" icon="pi pi-plus" severity="secondary" variant="outlined" @click="openCreateCategoryDialog" />
             </header>
             <div v-if="loadingFinanceData && !categories.length" class="finance-skeleton-grid"><article v-for="index in 3" :key="index" class="finance-skeleton"><span class="finance-skeleton__line finance-skeleton__line--title"></span></article></div>
-            <div v-else-if="!categories.length" class="dashboard-empty">No tienes categorías registradas todavía.</div>
+            <AppEmptyState v-else-if="!categories.length" title="No tienes categorías registradas todavía." compact />
             <div v-else class="finance-category-groups">
               <section v-for="group in categoryGroups" :key="group.id" class="finance-category-group">
                 <h3>{{ group.label }}</h3>
@@ -382,8 +374,8 @@
                   <article v-for="category in group.items" :key="category.id" class="finance-compact-row">
                     <div><strong>{{ category.name }}</strong><span>{{ categoryTypeLabel(category.type) }}</span></div>
                     <div class="finance-compact-row__actions">
-                      <Button type="button" icon="pi pi-pencil" severity="secondary" variant="outlined" class="app-button app-button--icon app-button--icon-secondary" aria-label="Editar categoría" @click="startCategoryEdit(category)" />
-                      <Button type="button" icon="pi pi-trash" severity="danger" variant="outlined" class="app-button app-button--icon app-button--danger" aria-label="Eliminar categoría" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
+                      <AppIconButton icon="pi pi-pencil" label="Editar categoría" @click="startCategoryEdit(category)" />
+                      <AppIconButton icon="pi pi-trash" label="Eliminar categoría" tone="danger" :disabled="financesStore.submitting" @click="handleDeleteCategory(category)" />
                     </div>
                   </article>
                 </div>
@@ -393,6 +385,17 @@
         </div>
       </section>
     </section>
+    <AppConfirmDialog
+      v-model:visible="deleteDialogVisible"
+      title="Confirmar eliminación"
+      :message="pendingDelete?.message || ''"
+      confirm-label="Eliminar"
+      :loading="financesStore.submitting"
+      destructive
+      @confirm="confirmPendingDelete"
+      @cancel="clearPendingDelete"
+    />
+
     <Dialog
       v-model:visible="showTransactionDialog"
       modal
@@ -826,6 +829,12 @@ import Dialog from 'primevue/dialog'
 import { useRoute } from 'vue-router'
 
 import SecondaryNav from '../../components/common/SecondaryNav.vue'
+import AppConfirmDialog from '../../components/ui/AppConfirmDialog.vue'
+import AppEmptyState from '../../components/ui/AppEmptyState.vue'
+import AppIconButton from '../../components/ui/AppIconButton.vue'
+import AppSectionHeader from '../../components/ui/AppSectionHeader.vue'
+import AppStatusBadge from '../../components/ui/AppStatusBadge.vue'
+import ExportActions from '../../components/ui/ExportActions.vue'
 import { useDashboardStore } from '../../stores/dashboard'
 import { useFinancesStore } from '../../stores/finances'
 import * as financesService from '../../services/finances'
@@ -867,6 +876,8 @@ const appliedBudgetMonth = ref('')
 const loadingMonthlyBudgetCategories = ref(false)
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
+const deleteDialogVisible = ref(false)
+const pendingDelete = ref(null)
 
 const accountForm = reactive({
   name: '',
@@ -1183,13 +1194,6 @@ function transactionAmountClass(type) {
   }
 }
 
-function recurringStatusClass(isActive) {
-  return {
-    'recurring-status-pill--active': isActive,
-    'recurring-status-pill--paused': !isActive,
-  }
-}
-
 const recurringMonthAbbreviations = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
 function formatRecurringDate(value) {
@@ -1248,14 +1252,14 @@ function budgetStatusLabel(budget) {
   return 'En curso'
 }
 
-function budgetStatusClass(budget) {
+function budgetStatusTone(budget) {
   if (budget.exceeded) {
-    return 'finance-budget-status--danger'
+    return 'danger'
   }
   if (Number(budget.usage_percentage) >= 80) {
-    return 'finance-budget-status--warning'
+    return 'warning'
   }
-  return 'finance-budget-status--active'
+  return 'success'
 }
 
 function budgetProgressClass(budget) {
@@ -1863,11 +1867,22 @@ async function handleMonthlyBudgetSubmit() {
   }
 }
 
-async function handleDeleteAccount(account) {
-  if (!window.confirm(`¿Eliminar la cuenta "${account.name}"?`)) {
-    return
-  }
+function requestDelete(kind, entity, message) {
+  pendingDelete.value = { kind, entity, message }
+  deleteDialogVisible.value = true
+}
 
+function clearPendingDelete() {
+  if (!financesStore.submitting) {
+    pendingDelete.value = null
+  }
+}
+
+function handleDeleteAccount(account) {
+  requestDelete('account', account, `¿Eliminar la cuenta "${account.name}"?`)
+}
+
+async function deleteAccount(account) {
   try {
     await financesStore.deleteAccount(account.id)
     await refreshFinanceSummary()
@@ -1879,11 +1894,11 @@ async function handleDeleteAccount(account) {
   }
 }
 
-async function handleDeleteCategory(category) {
-  if (!window.confirm(`¿Eliminar la categoría "${category.name}"?`)) {
-    return
-  }
+function handleDeleteCategory(category) {
+  requestDelete('category', category, `¿Eliminar la categoría "${category.name}"?`)
+}
 
+async function deleteCategory(category) {
   try {
     await financesStore.deleteCategory(category.id)
     if (editingCategoryId.value === category.id) {
@@ -1894,12 +1909,12 @@ async function handleDeleteCategory(category) {
   }
 }
 
-async function handleDeleteTransaction(transaction) {
+function handleDeleteTransaction(transaction) {
   const label = transaction.description || categoryLabel(transaction.category_id)
-  if (!window.confirm(`¿Eliminar el movimiento "${label}"?`)) {
-    return
-  }
+  requestDelete('transaction', transaction, `¿Eliminar el movimiento "${label}"?`)
+}
 
+async function deleteTransaction(transaction) {
   try {
     await financesStore.deleteTransaction(transaction.id)
     await refreshFinanceSummary()
@@ -1912,12 +1927,12 @@ async function handleDeleteTransaction(transaction) {
   }
 }
 
-async function handleDeleteRecurring(rule) {
+function handleDeleteRecurring(rule) {
   const label = rule.description || categoryLabel(rule.category_id)
-  if (!window.confirm(`¿Eliminar la regla recurrente "${label}"?`)) {
-    return
-  }
+  requestDelete('recurring', rule, `¿Eliminar la regla recurrente "${label}"?`)
+}
 
+async function deleteRecurring(rule) {
   try {
     await financesStore.deleteRecurring(rule.id)
     await loadUpcomingRecurring()
@@ -1929,16 +1944,33 @@ async function handleDeleteRecurring(rule) {
   }
 }
 
-async function handleDeleteMonthlyBudget(budget) {
-  if (!window.confirm(`¿Eliminar el presupuesto de "${budget.category_name}"?`)) {
-    return
-  }
+function handleDeleteMonthlyBudget(budget) {
+  requestDelete('budget', budget, `¿Eliminar el presupuesto de "${budget.category_name}"?`)
+}
 
+async function deleteMonthlyBudget(budget) {
   try {
     await financesStore.deleteMonthlyBudget(budget.budget_id, budgetMonth.value)
     if (editingMonthlyBudgetId.value === budget.budget_id) {
       resetMonthlyBudgetForm()
     }
+  } catch {
+    return
+  }
+}
+
+async function confirmPendingDelete() {
+  const request = pendingDelete.value
+  if (!request) return
+
+  try {
+    if (request.kind === 'account') await deleteAccount(request.entity)
+    if (request.kind === 'category') await deleteCategory(request.entity)
+    if (request.kind === 'transaction') await deleteTransaction(request.entity)
+    if (request.kind === 'recurring') await deleteRecurring(request.entity)
+    if (request.kind === 'budget') await deleteMonthlyBudget(request.entity)
+    deleteDialogVisible.value = false
+    pendingDelete.value = null
   } catch {
     return
   }
