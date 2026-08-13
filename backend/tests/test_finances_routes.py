@@ -44,11 +44,27 @@ async def test_monthly_report_requires_bearer(client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
+async def test_monthly_trends_require_bearer(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/finances/reports/monthly-trends")
+    assert response.status_code == 401
+
+
 @pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
 async def test_monthly_report_rejects_invalid_month(client: AsyncClient, month: str) -> None:
     token = await _register_and_login(client, email=f"invalid-report-{month}@example.com")
     response = await client.get(
         "/api/v1/finances/reports/monthly",
+        headers=_auth_headers(token),
+        params={"month": month},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
+async def test_monthly_trends_reject_invalid_month(client: AsyncClient, month: str) -> None:
+    token = await _register_and_login(client, email=f"invalid-trends-{month}@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly-trends",
         headers=_auth_headers(token),
         params={"month": month},
     )
@@ -73,6 +89,28 @@ async def test_monthly_report_uses_app_month_and_empty_values(
         "transaction_count": 0, "income_transaction_count": 0, "expense_transaction_count": 0,
     }
     assert body["comparisons"]["income"]["percentage_change"] is None
+
+
+async def test_monthly_trends_fill_empty_months_and_use_app_month(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 1, 22))
+    token = await _register_and_login(client, email="trends-empty@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly-trends",
+        headers=_auth_headers(token),
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["anchor_month"] == "2026-01"
+    assert body["period_start"] == "2025-08-01"
+    assert body["period_end"] == "2026-01-31"
+    assert [item["month"] for item in body["months"]] == [
+        "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01",
+    ]
+    assert all(item["transaction_count"] == 0 for item in body["months"])
+    assert all(item["savings_rate"] is None for item in body["months"])
 
 
 async def test_monthly_report_aggregates_transactions_spending_and_budgets(
@@ -165,6 +203,119 @@ async def test_monthly_report_aggregates_transactions_spending_and_budgets(
     assert body["spending_by_category"]["total_expenses"] == 350
     assert body["monthly_budgets"]["total_spent_amount"] == 300
     assert body["monthly_budgets"]["budgets"][0]["remaining_amount"] == 100
+
+
+async def test_monthly_trends_aggregate_real_transactions_and_scope_users(
+    client: AsyncClient,
+) -> None:
+    alice_token = await _register_and_login(client, email="trends-alice@example.com")
+    bob_token = await _register_and_login(client, email="trends-bob@example.com")
+    alice_headers = _auth_headers(alice_token)
+    bob_headers = _auth_headers(bob_token)
+    account = await client.post(
+        "/api/v1/finances/accounts",
+        headers=alice_headers,
+        json={"name": "Trends cash", "type": "cash", "initial_balance": 0},
+    )
+    income = await client.post(
+        "/api/v1/finances/categories",
+        headers=alice_headers,
+        json={"name": "Trends income", "type": "income"},
+    )
+    expense = await client.post(
+        "/api/v1/finances/categories",
+        headers=alice_headers,
+        json={"name": "Trends expense", "type": "expense"},
+    )
+    account_id = account.json()["id"]
+
+    async def create_transaction(
+        *, category_id: str, transaction_type: str, amount: int, transaction_date: str
+    ) -> None:
+        response = await client.post(
+            "/api/v1/finances/transactions",
+            headers=alice_headers,
+            json={
+                "account_id": account_id,
+                "category_id": category_id,
+                "type": transaction_type,
+                "amount": amount,
+                "transaction_date": transaction_date,
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    await create_transaction(
+        category_id=income.json()["id"], transaction_type="income", amount=3, transaction_date="2026-02-01"
+    )
+    await create_transaction(
+        category_id=expense.json()["id"], transaction_type="expense", amount=1, transaction_date="2026-02-28"
+    )
+    await create_transaction(
+        category_id=income.json()["id"], transaction_type="income", amount=100, transaction_date="2026-07-31"
+    )
+    await create_transaction(
+        category_id=expense.json()["id"], transaction_type="expense", amount=150, transaction_date="2026-07-15"
+    )
+    await create_transaction(
+        category_id=income.json()["id"], transaction_type="income", amount=100, transaction_date="2026-06-01"
+    )
+    await create_transaction(
+        category_id=expense.json()["id"], transaction_type="expense", amount=100, transaction_date="2026-06-30"
+    )
+    recurring = await client.post(
+        "/api/v1/finances/recurring",
+        headers=alice_headers,
+        json={
+            "account_id": account_id,
+            "category_id": expense.json()["id"],
+            "type": "expense",
+            "amount": 12,
+            "description": "Registered trend occurrence",
+            "frequency": "daily",
+            "start_date": "2026-07-31",
+        },
+    )
+    assert recurring.status_code == 201, recurring.text
+    registration = await client.post(
+        f"/api/v1/finances/recurring/{recurring.json()['id']}/registrations",
+        headers=alice_headers,
+        json={"transaction_date": "2026-07-31"},
+    )
+    assert registration.status_code == 201, registration.text
+    response = await client.get(
+        "/api/v1/finances/reports/monthly-trends",
+        headers=alice_headers,
+        params={"month": "2026-07"},
+    )
+    assert response.status_code == 200, response.text
+    months = response.json()["months"]
+    assert months[0] == {
+        "month": "2026-02",
+        "period_start": "2026-02-01",
+        "period_end": "2026-02-28",
+        "total_income": 3,
+        "total_expenses": 1,
+        "net": 2,
+        "transaction_count": 2,
+        "income_transaction_count": 1,
+        "expense_transaction_count": 1,
+        "savings_rate": 66.67,
+    }
+    assert months[4]["net"] == 0
+    assert months[4]["savings_rate"] == 0.0
+    assert months[-1]["total_expenses"] == 162
+    assert months[-1]["net"] == -62
+    assert months[-1]["savings_rate"] == -62.0
+    assert months[1]["savings_rate"] is None
+
+    bob_response = await client.get(
+        "/api/v1/finances/reports/monthly-trends",
+        headers=bob_headers,
+        params={"month": "2026-07"},
+    )
+    assert bob_response.status_code == 200
+    assert all(item["transaction_count"] == 0 for item in bob_response.json()["months"])
 
 
 async def test_monthly_budgets_require_bearer(client: AsyncClient) -> None:
