@@ -43,6 +43,10 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetRead,
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
+    MonthlyFinancialReportRead,
+    MonthlyMetricComparison,
+    MonthlyReportComparisons,
+    MonthlyTransactionSummary,
     RecurringTransactionCreate,
     RecurringOccurrenceRegistrationCreate,
     RecurringOccurrenceRegistrationRead,
@@ -116,6 +120,27 @@ def _share_percentage(amount: int, total: int) -> float:
         (Decimal(amount) * Decimal("100") / Decimal(total)).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+    )
+
+
+def _previous_month_start(month_start: date) -> date:
+    return date(month_start.year - 1, 12, 1) if month_start.month == 1 else date(month_start.year, month_start.month - 1, 1)
+
+
+def _comparison(current_amount: int, previous_amount: int) -> MonthlyMetricComparison:
+    absolute_change = current_amount - previous_amount
+    percentage_change = None
+    if previous_amount:
+        percentage_change = float(
+            (Decimal(absolute_change) * Decimal("100") / Decimal(abs(previous_amount))).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        )
+    return MonthlyMetricComparison(
+        current_amount=current_amount,
+        previous_amount=previous_amount,
+        absolute_change=absolute_change,
+        percentage_change=percentage_change,
     )
 
 
@@ -761,6 +786,75 @@ async def get_spending_by_category(
             )
             for category_id, category_name, amount, transaction_count in rows
         ],
+    )
+
+
+async def get_monthly_transaction_summary(
+    session,
+    *,
+    user_id: uuid.UUID,
+    period_start: date,
+    period_end: date,
+) -> MonthlyTransactionSummary:
+    income, expenses, transaction_count, income_count, expense_count = await finances_repo.get_transaction_summary_for_period(
+        session, user_id=user_id, period_start=period_start, period_end=period_end
+    )
+    return MonthlyTransactionSummary(
+        total_income=income,
+        total_expenses=expenses,
+        net=income - expenses,
+        transaction_count=transaction_count,
+        income_transaction_count=income_count,
+        expense_transaction_count=expense_count,
+    )
+
+
+async def get_monthly_financial_report(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+    today: date | None = None,
+) -> MonthlyFinancialReportRead:
+    selected_month, period_start, period_end = _spending_month_bounds(month, today=today or current_app_date())
+    previous_start = _previous_month_start(period_start)
+    previous_month, previous_period_start, previous_period_end = _spending_month_bounds(
+        previous_start.strftime("%Y-%m"), today=previous_start
+    )
+    # AsyncSession executes one database operation at a time. Keep these
+    # aggregate queries sequential while reusing the same request session.
+    current = await get_monthly_transaction_summary(
+        session,
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    previous = await get_monthly_transaction_summary(
+        session,
+        user_id=user_id,
+        period_start=previous_period_start,
+        period_end=previous_period_end,
+    )
+    spending = await get_spending_by_category(session, user_id=user_id, month=selected_month, today=period_start)
+    budgets = await get_monthly_budgets(
+        session, user_id=user_id, month=selected_month, today=period_start, spending_summary=spending
+    )
+    return MonthlyFinancialReportRead(
+        month=selected_month,
+        period_start=period_start,
+        period_end=period_end,
+        previous_month=previous_month,
+        previous_period_start=previous_period_start,
+        previous_period_end=previous_period_end,
+        current=current,
+        previous=previous,
+        comparisons=MonthlyReportComparisons(
+            income=_comparison(current.total_income, previous.total_income),
+            expenses=_comparison(current.total_expenses, previous.total_expenses),
+            net=_comparison(current.net, previous.net),
+        ),
+        spending_by_category=spending,
+        monthly_budgets=budgets,
     )
 
 

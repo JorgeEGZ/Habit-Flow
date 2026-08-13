@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.core.config import get_app_timezone, get_settings
 from app.modules.dashboard import repository as dashboard_repo
@@ -297,13 +297,14 @@ async def get_finances(
 ) -> DashboardFinances:
     today = today or current_app_date()
     month_start, next_month_start = _month_bounds(today)
-
-    monthly_income, monthly_expenses = await dashboard_repo.fetch_finance_monthly_summary(
+    finance_summary = await finances_service.get_monthly_transaction_summary(
         session,
         user_id=user_id,
-        month_start=month_start,
-        next_month_start=next_month_start,
+        period_start=month_start,
+        period_end=next_month_start - timedelta(days=1),
     )
+    monthly_income = finance_summary.total_income
+    monthly_expenses = finance_summary.total_expenses
     account_rows = await dashboard_repo.fetch_account_balances(session, user_id=user_id)
     recent_rows = await dashboard_repo.fetch_recent_transactions(
         session,

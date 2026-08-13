@@ -520,6 +520,41 @@ async def get_expense_spending_by_category(
     ]
 
 
+async def get_transaction_summary_for_period(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    period_start: date,
+    period_end: date,
+) -> tuple[int, int, int, int, int]:
+    """Return transaction totals for an inclusive user-owned date range in one query."""
+    income_amount = func.coalesce(
+        func.sum(case((Transaction.type == ENTRY_INCOME, Transaction.amount), else_=0)), 0
+    )
+    expense_amount = func.coalesce(
+        func.sum(case((Transaction.type == ENTRY_EXPENSE, Transaction.amount), else_=0)), 0
+    )
+    income_count = func.coalesce(
+        func.sum(case((Transaction.type == ENTRY_INCOME, 1), else_=0)), 0
+    )
+    expense_count = func.coalesce(
+        func.sum(case((Transaction.type == ENTRY_EXPENSE, 1), else_=0)), 0
+    )
+    stmt = select(
+        income_amount,
+        expense_amount,
+        func.count(Transaction.id),
+        income_count,
+        expense_count,
+    ).where(
+        Transaction.user_id == user_id,
+        Transaction.transaction_date >= period_start,
+        Transaction.transaction_date <= period_end,
+    )
+    row = (await session.execute(stmt)).one()
+    return tuple(int(value or 0) for value in row)
+
+
 # ---------- Recurring transactions ----------
 
 async def get_recurring_by_id_and_user(

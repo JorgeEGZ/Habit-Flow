@@ -26,6 +26,9 @@ export const useFinancesStore = defineStore('finances', {
     budgetedCategoryIdsByMonth: {},
     upcomingRecurring: null,
     upcomingRecurringError: '',
+    monthlyReport: null,
+    loadingMonthlyReport: false,
+    monthlyReportError: '',
   }),
   actions: {
     async fetchAccounts() {
@@ -105,6 +108,20 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.loadingMonthlyBudgets = false
+      }
+    },
+
+    async fetchMonthlyReport(month) {
+      this.loadingMonthlyReport = true
+      this.monthlyReportError = ''
+      try {
+        this.monthlyReport = await financesService.getMonthlyReport(month)
+        return this.monthlyReport
+      } catch (error) {
+        this.monthlyReportError = 'No fue posible cargar el reporte mensual.'
+        throw error
+      } finally {
+        this.loadingMonthlyReport = false
       }
     },
 

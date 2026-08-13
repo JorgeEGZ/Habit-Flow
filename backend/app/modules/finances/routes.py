@@ -20,6 +20,7 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetRead,
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
+    MonthlyFinancialReportRead,
     RecurringTransactionCreate,
     RecurringOccurrenceRegistrationCreate,
     RecurringOccurrenceRegistrationRead,
@@ -405,6 +406,17 @@ async def get_upcoming_recurring(
         session,
         user_id=user.id,
         days=int(days),
+    )
+
+
+@router.get("/reports/monthly", response_model=MonthlyFinancialReportRead)
+async def get_monthly_financial_report(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> MonthlyFinancialReportRead:
+    return await finances_service.get_monthly_financial_report(
+        session, user_id=user.id, month=month
     )
 
 
