@@ -10,6 +10,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { registerPwa } from './composables/usePwa'
 import 'primeicons/primeicons.css'
 import 'primevue/resources/primevue.min.css'
 import 'primevue/resources/themes/lara-dark-blue/theme.css'
@@ -39,6 +40,10 @@ async function bootstrap() {
   })
 
   app.mount('#app')
+
+  void registerPwa().catch(() => {
+    // PWA installation is optional and must never block application startup.
+  })
 
   // Mount first so public routes never wait on a cross-origin refresh request.
   await authStore.initialize()

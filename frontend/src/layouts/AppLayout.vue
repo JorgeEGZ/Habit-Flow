@@ -19,6 +19,8 @@
     </div>
 
     <BottomNav class="app-shell__bottom-nav" />
+    <PwaInstallPrompt />
+    <PwaUpdatePrompt />
   </div>
 </template>
 
@@ -29,6 +31,8 @@ import { useRoute } from 'vue-router'
 import SidebarNav from '../components/layout/SidebarNav.vue'
 import BottomNav from '../components/layout/BottomNav.vue'
 import UserMenu from '../components/layout/UserMenu.vue'
+import PwaInstallPrompt from '../components/pwa/PwaInstallPrompt.vue'
+import PwaUpdatePrompt from '../components/pwa/PwaUpdatePrompt.vue'
 
 const route = useRoute()
 

@@ -307,3 +307,25 @@ Recurring rules remain declarative. A user may explicitly materialize one schedu
 - No scheduler, cron job, or notification system is introduced.
 - Real generated transactions naturally participate in balances, budgets, insights, dashboard summaries, and exports.
 - The frontend exposes registration only from projected occurrences, not from the recurring-rule management table.
+
+---
+
+## 014 - Online-first PWA experience (2026-08-12, accepted)
+
+HabitFlow is installable through a custom service worker, while authenticated data remains online-only.
+
+**Why:** Daily mobile use benefits from installation and fast static asset loading, but caching account, habit, savings, or finance API responses would create privacy, freshness, and session-consistency risks.
+
+**How it works:**
+
+- The custom service worker precaches only the offline page, manifest, favicon, and application icons.
+- Same-origin hashed static assets may be cached after a successful request. API, cross-origin, and non-GET requests always use the network and are never cached.
+- Navigation is network-first and falls back to a static Spanish offline page when unavailable.
+- A waiting service worker is activated only after the user selects the update action. The application never reloads automatically while a user might be editing data.
+- Service worker registration happens only in production builds. HTTPS is required outside localhost.
+
+**Consequences:**
+
+- Installation does not provide offline access to user data and does not queue writes.
+- Full offline data, background sync, notifications, and push are deferred.
+- Production hosts must serve `sw.js` without immutable caching and keep SPA deep-link fallback enabled.
