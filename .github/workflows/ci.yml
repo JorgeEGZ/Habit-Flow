@@ -94,6 +94,46 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+  pwa:
+    name: pwa
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run PWA Playwright checks
+        env:
+          CI: "true"
+        run: npm run test:e2e:pwa
+
+      - name: Upload PWA diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pwa-diagnostics
+          path: |
+            frontend/playwright-report
+            frontend/test-results/pwa
+          if-no-files-found: ignore
+          retention-days: 7
+
   e2e:
     name: e2e
     needs: [backend, frontend]
