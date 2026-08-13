@@ -97,8 +97,14 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
     response.url().includes('/finances/reports/monthly?month=2026-01')
     && response.status() === 200
   ))
+  const trendsResponse = page.waitForResponse((response) => (
+    response.url().includes('/finances/reports/monthly-trends?month=2026-01')
+    && response.status() === 200
+  ))
   await reportMonth.fill('2026-01')
   await reportResponse
+  await trendsResponse
+  await expect(page.getByRole('heading', { name: 'Tendencia de 6 meses' })).toBeVisible()
   await expect(page.getByText('No hay gastos registrados en este mes.')).toBeVisible()
 
   await page.goto('/dashboard')

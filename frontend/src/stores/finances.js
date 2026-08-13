@@ -29,6 +29,9 @@ export const useFinancesStore = defineStore('finances', {
     monthlyReport: null,
     loadingMonthlyReport: false,
     monthlyReportError: '',
+    monthlyTrends: null,
+    loadingMonthlyTrends: false,
+    monthlyTrendsError: '',
   }),
   actions: {
     async fetchAccounts() {
@@ -122,6 +125,20 @@ export const useFinancesStore = defineStore('finances', {
         throw error
       } finally {
         this.loadingMonthlyReport = false
+      }
+    },
+
+    async fetchMonthlyTrends(month) {
+      this.loadingMonthlyTrends = true
+      this.monthlyTrendsError = ''
+      try {
+        this.monthlyTrends = await financesService.getMonthlyTrends(month)
+        return this.monthlyTrends
+      } catch (error) {
+        this.monthlyTrendsError = 'No fue posible cargar las tendencias mensuales.'
+        throw error
+      } finally {
+        this.loadingMonthlyTrends = false
       }
     },
 

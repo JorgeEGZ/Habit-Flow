@@ -255,6 +255,27 @@ class MonthlyFinancialReportRead(BaseModel):
     monthly_budgets: MonthlyCategoryBudgetsRead
 
 
+class MonthlyTrendPoint(BaseModel):
+    month: str
+    period_start: date
+    period_end: date
+    total_income: int = Field(ge=0)
+    total_expenses: int = Field(ge=0)
+    net: int
+    transaction_count: int = Field(ge=0)
+    income_transaction_count: int = Field(ge=0)
+    expense_transaction_count: int = Field(ge=0)
+    savings_rate: float | None = None
+
+
+class MonthlyFinancialTrendsRead(BaseModel):
+    anchor_month: str
+    period_start: date
+    period_end: date
+    month_count: int = Field(ge=1)
+    months: list[MonthlyTrendPoint]
+
+
 class UpcomingRecurringOccurrence(BaseModel):
     recurring_id: uuid.UUID
     occurrence_date: date

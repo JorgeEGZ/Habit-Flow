@@ -44,9 +44,11 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
     MonthlyFinancialReportRead,
+    MonthlyFinancialTrendsRead,
     MonthlyMetricComparison,
     MonthlyReportComparisons,
     MonthlyTransactionSummary,
+    MonthlyTrendPoint,
     RecurringTransactionCreate,
     RecurringOccurrenceRegistrationCreate,
     RecurringOccurrenceRegistrationRead,
@@ -125,6 +127,11 @@ def _share_percentage(amount: int, total: int) -> float:
 
 def _previous_month_start(month_start: date) -> date:
     return date(month_start.year - 1, 12, 1) if month_start.month == 1 else date(month_start.year, month_start.month - 1, 1)
+
+
+def _shift_month_start(month_start: date, offset: int) -> date:
+    month_index = month_start.year * 12 + (month_start.month - 1) + offset
+    return date(month_index // 12, month_index % 12 + 1, 1)
 
 
 def _comparison(current_amount: int, previous_amount: int) -> MonthlyMetricComparison:
@@ -855,6 +862,77 @@ async def get_monthly_financial_report(
         ),
         spending_by_category=spending,
         monthly_budgets=budgets,
+    )
+
+
+async def get_monthly_financial_trends(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+    today: date | None = None,
+) -> MonthlyFinancialTrendsRead:
+    anchor_month, anchor_start, anchor_end = _spending_month_bounds(
+        month,
+        today=today or current_app_date(),
+    )
+    period_start = _shift_month_start(anchor_start, -5)
+    rows = await finances_repo.get_transaction_summaries_by_month(
+        session,
+        user_id=user_id,
+        period_start=period_start,
+        period_end=anchor_end,
+    )
+    summaries = {
+        f"{year:04d}-{month_number:02d}": (
+            income,
+            expenses,
+            transaction_count,
+            income_count,
+            expense_count,
+        )
+        for year, month_number, income, expenses, transaction_count, income_count, expense_count in rows
+    }
+    months: list[MonthlyTrendPoint] = []
+    for offset in range(6):
+        month_start = _shift_month_start(period_start, offset)
+        month_key, _, month_end = _spending_month_bounds(
+            month_start.strftime("%Y-%m"),
+            today=month_start,
+        )
+        income, expenses, transaction_count, income_count, expense_count = summaries.get(
+            month_key,
+            (0, 0, 0, 0, 0),
+        )
+        net = income - expenses
+        savings_rate = None
+        if income > 0:
+            savings_rate = float(
+                (Decimal(net) * Decimal("100") / Decimal(income)).quantize(
+                    Decimal("0.01"),
+                    rounding=ROUND_HALF_UP,
+                )
+            )
+        months.append(
+            MonthlyTrendPoint(
+                month=month_key,
+                period_start=month_start,
+                period_end=month_end,
+                total_income=income,
+                total_expenses=expenses,
+                net=net,
+                transaction_count=transaction_count,
+                income_transaction_count=income_count,
+                expense_transaction_count=expense_count,
+                savings_rate=savings_rate,
+            )
+        )
+    return MonthlyFinancialTrendsRead(
+        anchor_month=anchor_month,
+        period_start=period_start,
+        period_end=anchor_end,
+        month_count=6,
+        months=months,
     )
 
 

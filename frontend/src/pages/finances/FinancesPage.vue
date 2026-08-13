@@ -181,8 +181,12 @@
         :loading="financesStore.loadingMonthlyReport"
         :error="financesStore.monthlyReportError"
         :month="reportMonth"
+        :trends="financesStore.monthlyTrends"
+        :trends-loading="financesStore.loadingMonthlyTrends"
+        :trends-error="financesStore.monthlyTrendsError"
         @month-change="handleReportMonthChange"
         @retry="loadMonthlyReport"
+        @retry-trends="loadMonthlyTrends(reportMonth)"
       />
 
       <section v-else-if="isBudgetsWorkspace" class="finance-tab-panel finance-budget-panel">
@@ -1192,6 +1196,15 @@ async function loadMonthlyReport() {
   try {
     const report = await financesStore.fetchMonthlyReport(reportMonth.value || undefined)
     if (!reportMonth.value) reportMonth.value = report.month
+    await loadMonthlyTrends(report.month)
+  } catch {
+    return
+  }
+}
+
+async function loadMonthlyTrends(month = reportMonth.value) {
+  try {
+    await financesStore.fetchMonthlyTrends(month || undefined)
   } catch {
     return
   }

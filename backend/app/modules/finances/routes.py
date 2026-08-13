@@ -21,6 +21,7 @@ from app.modules.finances.schemas import (
     MonthlyCategoryBudgetUpdate,
     MonthlyCategoryBudgetsRead,
     MonthlyFinancialReportRead,
+    MonthlyFinancialTrendsRead,
     RecurringTransactionCreate,
     RecurringOccurrenceRegistrationCreate,
     RecurringOccurrenceRegistrationRead,
@@ -417,6 +418,19 @@ async def get_monthly_financial_report(
 ) -> MonthlyFinancialReportRead:
     return await finances_service.get_monthly_financial_report(
         session, user_id=user.id, month=month
+    )
+
+
+@router.get("/reports/monthly-trends", response_model=MonthlyFinancialTrendsRead)
+async def get_monthly_financial_trends(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> MonthlyFinancialTrendsRead:
+    return await finances_service.get_monthly_financial_trends(
+        session,
+        user_id=user.id,
+        month=month,
     )
 
 

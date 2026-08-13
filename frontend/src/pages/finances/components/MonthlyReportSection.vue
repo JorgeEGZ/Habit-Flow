@@ -32,6 +32,13 @@
         </article>
       </div>
 
+      <MonthlyTrendsSection
+        :trends="trends"
+        :loading="trendsLoading"
+        :error="trendsError"
+        @retry="$emit('retry-trends')"
+      />
+
       <section class="monthly-report__section">
         <AppSectionHeader title="Gastos por categor&#237;a" heading-id="report-spending-title" />
         <AppEmptyState
@@ -109,6 +116,7 @@ import Button from 'primevue/button'
 import AppEmptyState from '../../../components/ui/AppEmptyState.vue'
 import AppSectionHeader from '../../../components/ui/AppSectionHeader.vue'
 import AppStatusBadge from '../../../components/ui/AppStatusBadge.vue'
+import MonthlyTrendsSection from './MonthlyTrendsSection.vue'
 import { formatCurrencyCop } from '../../../utils/format'
 
 const props = defineProps({
@@ -116,9 +124,12 @@ const props = defineProps({
   loading: Boolean,
   error: { type: String, default: '' },
   month: { type: String, default: '' },
+  trends: { type: Object, default: null },
+  trendsLoading: Boolean,
+  trendsError: { type: String, default: '' },
 })
 
-defineEmits(['month-change', 'retry'])
+defineEmits(['month-change', 'retry', 'retry-trends'])
 
 const metrics = computed(() => {
   if (!props.report) return []
