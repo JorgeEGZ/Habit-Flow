@@ -9,6 +9,7 @@ import pytest
 from httpx import AsyncClient
 from openpyxl import load_workbook
 
+from app.core.exports import current_app_date
 
 pytestmark = pytest.mark.asyncio
 
@@ -256,7 +257,7 @@ async def test_goal_contribution_exports_are_scoped_and_sanitize_notes(
     assert csv_response.status_code == 200
     assert csv_response.headers["cache-control"] == "private, no-store"
     assert csv_response.headers["content-disposition"].endswith(
-        f'habitflow-savings-contributions-{goal_id}-2026-07-23.csv"'
+        f'habitflow-savings-contributions-{goal_id}-{current_app_date().isoformat()}.csv"'
     )
     rows = _csv_rows(csv_response)
     assert rows[0] == [

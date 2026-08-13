@@ -60,6 +60,25 @@ server {
         add_header Permissions-Policy "camera=(), geolocation=(), microphone=()" always;
     }
 
+    location = /sw.js {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Service-Worker-Allowed "/" always;
+    }
+
+    location = /manifest.webmanifest {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /offline.html {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location ~* \.(?:css|js|mjs|png|jpg|jpeg|gif|ico|svg|woff2?|ttf)$ {
         root /usr/share/nginx/html;
         try_files $uri =404;

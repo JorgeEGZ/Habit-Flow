@@ -6,6 +6,7 @@ from datetime import date, timedelta
 import pytest
 from httpx import AsyncClient
 
+from app.core.exports import current_app_date
 from app.modules.dashboard import service as dashboard_service
 
 pytestmark = pytest.mark.asyncio
@@ -34,6 +35,7 @@ async def test_dashboard_requires_bearer(client: AsyncClient) -> None:
 
 
 async def test_dashboard_empty_state(client: AsyncClient) -> None:
+    app_today = current_app_date()
     token = await _register_and_login(client, email="dash-empty@example.com")
 
     summary = await client.get(
@@ -75,12 +77,12 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
             "account_balances": [],
             "recent_transactions": [],
             "insights": {
-                "as_of": str(date.today()),
-                "month": date.today().strftime("%Y-%m"),
+                "as_of": str(app_today),
+                "month": app_today.strftime("%Y-%m"),
                 "top_spending_category": None,
                 "upcoming_recurring": {
-                    "period_start": str(date.today()),
-                    "period_end": str(date.today() + timedelta(days=29)),
+                    "period_start": str(app_today),
+                    "period_end": str(app_today + timedelta(days=29)),
                     "window_days": 30,
                     "total_income": 0,
                     "total_expenses": 0,
@@ -88,7 +90,7 @@ async def test_dashboard_empty_state(client: AsyncClient) -> None:
                     "occurrence_count": 0,
                 },
                 "monthly_budgets": {
-                    "month": date.today().strftime("%Y-%m"),
+                    "month": app_today.strftime("%Y-%m"),
                     "total_budget_amount": 0,
                     "total_spent_amount": 0,
                     "total_remaining_amount": 0,
@@ -125,6 +127,7 @@ async def test_dashboard_finance_insights_use_current_app_date(
 
 
 async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:
+    app_today = current_app_date()
     token = await _register_and_login(client, email="dash-consistent@example.com")
 
     habit = await client.post(
@@ -135,7 +138,7 @@ async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:
     await client.post(
         f"/api/v1/habits/{habit.json()['id']}/logs",
         headers=_auth_headers(token),
-        json={"logged_on": str(date.today())},
+        json={"logged_on": str(app_today)},
     )
 
     goal = await client.post(
@@ -146,7 +149,7 @@ async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:
     await client.post(
         f"/api/v1/savings/goals/{goal.json()['id']}/contributions",
         headers=_auth_headers(token),
-        json={"amount": 25, "contribution_date": str(date.today())},
+        json={"amount": 25, "contribution_date": str(app_today)},
     )
 
     account = await client.post(
@@ -168,7 +171,7 @@ async def test_summary_matches_section_endpoints(client: AsyncClient) -> None:
             "type": "income",
             "amount": 100,
             "description": "Pay",
-            "transaction_date": str(date.today()),
+            "transaction_date": str(app_today),
         },
     )
 

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:local": "playwright test",
+    "test:e2e:pwa": "playwright test e2e/pwa --config=playwright.pwa.config.js",
     "test:e2e:remote": "playwright test e2e/readonly",
     "test:e2e:render": "npm run test:e2e:remote",
     "test:e2e:headed": "playwright test --headed",

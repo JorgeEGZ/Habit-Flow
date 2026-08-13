@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="HabitFlow">
+  <rect width="64" height="64" rx="16" fill="#101823"/>
+  <path d="M18 16h9v12h10V16h9v32h-9V36H27v12h-9V16z" fill="#e6edf6"/>
+  <path d="M18 16h9v12h10V16h9v5H18v-5z" fill="#557ee6"/>
+</svg>

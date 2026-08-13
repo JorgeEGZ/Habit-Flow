@@ -10,6 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exports import current_app_date
 from app.core.security import hash_password
 from app.modules.habits import routes as habits_routes
 from app.modules.users.models import User
@@ -97,7 +98,7 @@ async def test_progress_route_rejects_future_as_of(client: AsyncClient) -> None:
     response = await client.get(
         "/api/v1/habits/progress",
         headers=_auth_headers(token),
-        params={"as_of": (date.today() + timedelta(days=1)).isoformat()},
+        params={"as_of": (current_app_date() + timedelta(days=1)).isoformat()},
     )
 
     assert response.status_code == 400
@@ -123,7 +124,7 @@ async def test_progress_route_is_user_scoped_and_not_captured_as_habit_id(
     response = await client.get(
         "/api/v1/habits/progress",
         headers=_auth_headers(alice_token),
-        params={"as_of": date.today().isoformat()},
+        params={"as_of": current_app_date().isoformat()},
     )
 
     assert response.status_code == 200

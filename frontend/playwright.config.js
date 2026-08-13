@@ -7,6 +7,7 @@ const isLocalTarget = hostname === 'localhost' || hostname === '127.0.0.1'
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['e2e/pwa/**'],
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 2 : 0,
