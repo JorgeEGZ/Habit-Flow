@@ -25,6 +25,17 @@ def test_production_settings_reject_wildcard_cors_origin() -> None:
         _production_settings(cors_origins=["*"])
 
 
+@pytest.mark.parametrize("secret_key", ["change_this_later", "changeme", "secret"])
+def test_production_settings_reject_placeholder_secret_keys(secret_key: str) -> None:
+    with pytest.raises(PydanticValidationError, match="placeholder"):
+        _production_settings(secret_key=secret_key)
+
+
+def test_production_settings_reject_short_secret_key() -> None:
+    with pytest.raises(PydanticValidationError, match="at least 32 bytes"):
+        _production_settings(secret_key="short-production-secret")
+
+
 def test_settings_reject_samesite_none_without_secure_cookie() -> None:
     with pytest.raises(PydanticValidationError, match="requires REFRESH_COOKIE_SECURE"):
         _production_settings(refresh_cookie_secure=False)

@@ -12,6 +12,8 @@ docs/
 !docs/
 docs/*
 !docs/DECISIONS.md
+!docs/PRODUCTION_READINESS.md
+!docs/PRODUCTION_CHECKLIST.md
 
 # Python
 __pycache__/

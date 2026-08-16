@@ -63,13 +63,16 @@ Migrations run automatically when the backend starts. See
 serialized release migrations, environment settings, health checks, and
 cutover guidance. The Oracle Cloud Free Tier single-VM Nginx option is
 documented in [deploy/oci/README.md](deploy/oci/README.md).
+The production release audit and operator checklist are available in
+[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) and
+[docs/PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md).
 
 ## Continuous Integration
 
-GitHub Actions runs required backend, frontend-build, and local Playwright
-checks for pull requests to `main` and pushes to `main`. The backend job runs
-Alembic against PostgreSQL; the existing backend test suite keeps its isolated
-SQLite fixtures.
+GitHub Actions runs required `backend`, `frontend`, `e2e`, and `pwa` checks for
+pull requests to `main` and pushes to `main`. The backend job runs Alembic
+against PostgreSQL; the existing backend test suite keeps its isolated SQLite
+fixtures.
 
 Remote read-only smoke tests are intentionally manual/deferred. A future
 cloud-neutral workflow will require `BASE_URL`, `E2E_EMAIL`, and

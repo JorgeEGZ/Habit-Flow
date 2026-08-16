@@ -68,7 +68,12 @@ Refresh tokens are transported exclusively in a host-only, HttpOnly cookie. Logi
 
 ---
 
-## 013 - Frontend session policy for the internal MVP (2026-07-20, accepted)
+## 013 - Frontend session policy for the internal MVP (2026-07-20, superseded)
+
+**Superseded by ADR 014 (2026-07-22):** The public-release cookie transport
+was implemented. Refresh tokens are now host-only HttpOnly cookies, access
+tokens remain memory-only, and sessions can be restored through the refresh
+endpoint after a page reload. This record remains for historical context only.
 
 Refresh tokens are intentionally kept only in frontend memory for the active browser runtime. They must not be persisted in `localStorage` or `sessionStorage` for the internal MVP.
 
