@@ -177,11 +177,11 @@
 
       <MonthlyReportSection
         v-else-if="isReportsWorkspace"
-        :report="financesStore.monthlyReport"
+        :report="selectedMonthlyReport"
         :loading="financesStore.loadingMonthlyReport"
         :error="financesStore.monthlyReportError"
         :month="reportMonth"
-        :trends="financesStore.monthlyTrends"
+        :trends="selectedMonthlyTrends"
         :trends-loading="financesStore.loadingMonthlyTrends"
         :trends-error="financesStore.monthlyTrendsError"
         :exporting="exportingMonthlyReport"
@@ -897,6 +897,8 @@ const loadingMonthlyBudgetCategories = ref(false)
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
 const reportMonth = ref('')
+const monthlyReportLoadId = ref(0)
+const monthlyTrendsLoadId = ref(0)
 const deleteDialogVisible = ref(false)
 const pendingDelete = ref(null)
 
@@ -1005,6 +1007,14 @@ const isBudgetsWorkspace = computed(() => route.name === 'finances-budgets')
 const isReportsWorkspace = computed(() => route.name === 'finances-reports')
 const isRecurringWorkspace = computed(() => route.name === 'finances-recurring')
 const isAccountsWorkspace = computed(() => route.name === 'finances-accounts')
+const selectedMonthlyReport = computed(() => {
+  const report = financesStore.monthlyReport
+  return report && report.month === reportMonth.value ? report : null
+})
+const selectedMonthlyTrends = computed(() => {
+  const trends = financesStore.monthlyTrends
+  return trends && trends.anchor_month === reportMonth.value ? trends : null
+})
 
 const accounts = computed(() => financesStore.accounts)
 const categories = computed(() => financesStore.categories)
@@ -1198,9 +1208,15 @@ watch(
 )
 
 async function loadMonthlyReport() {
+  const loadId = ++monthlyReportLoadId.value
+  const requestedMonth = reportMonth.value || undefined
   try {
-    const report = await financesStore.fetchMonthlyReport(reportMonth.value || undefined)
-    if (!reportMonth.value) reportMonth.value = report.month
+    const report = await financesStore.fetchMonthlyReport(requestedMonth)
+    if (loadId !== monthlyReportLoadId.value) return
+    if (!reportMonth.value) {
+      reportMonth.value = report.month
+    }
+    if (report.month !== reportMonth.value) return
     await loadMonthlyTrends(report.month)
   } catch {
     return
@@ -1208,8 +1224,11 @@ async function loadMonthlyReport() {
 }
 
 async function loadMonthlyTrends(month = reportMonth.value) {
+  const loadId = ++monthlyTrendsLoadId.value
+  const requestedMonth = month || undefined
   try {
-    await financesStore.fetchMonthlyTrends(month || undefined)
+    const trends = await financesStore.fetchMonthlyTrends(requestedMonth)
+    if (loadId !== monthlyTrendsLoadId.value || trends.anchor_month !== reportMonth.value) return
   } catch {
     return
   }
@@ -1232,6 +1251,7 @@ async function handleMonthlyReportExport() {
 function handleReportMonthChange(month) {
   if (!month || month === reportMonth.value) return
   reportMonth.value = month
+  monthlyReportExportError.value = ''
   void loadMonthlyReport()
 }
 

@@ -1,8 +1,13 @@
 <template>
-  <section class="finance-tab-panel monthly-report" :aria-busy="loading">
+  <section
+    class="finance-tab-panel monthly-report"
+    aria-labelledby="monthly-report-title"
+    :aria-busy="loading"
+  >
     <AppSectionHeader
       title="Reporte mensual"
       description="Consulta tus ingresos, gastos y presupuesto para el mes seleccionado."
+      heading-id="monthly-report-title"
     >
       <template #actions>
         <label class="finance-budget-month">
@@ -29,6 +34,9 @@
     </AppSectionHeader>
 
     <p v-if="exportError" class="monthly-report__error" role="alert">{{ exportError }}</p>
+    <p v-if="loading && report" class="monthly-report__loading-status" role="status" aria-live="polite">
+      Actualizando reporte mensual.
+    </p>
 
     <div v-if="loading && !report" class="finance-skeleton-grid" aria-label="Cargando reporte mensual">
       <article v-for="index in 4" :key="index" class="finance-skeleton">
@@ -37,13 +45,15 @@
       </article>
     </div>
     <template v-else-if="report">
-      <div class="monthly-report__kpis" aria-label="Resumen mensual">
-        <article v-for="metric in metrics" :key="metric.key" class="finance-kpi">
-          <span>{{ metric.label }}</span>
-          <strong :class="metric.amountClass">{{ metric.value }}</strong>
-          <small :class="metric.comparisonClass">{{ comparisonText(metric.comparison) }}</small>
-        </article>
-      </div>
+      <dl class="monthly-report__kpis" aria-label="Resumen mensual">
+        <div v-for="metric in metrics" :key="metric.key" class="finance-kpi">
+          <dt>{{ metric.label }}</dt>
+          <dd>
+            <strong :class="metric.amountClass">{{ metric.value }}</strong>
+            <small :class="metric.comparisonClass">{{ comparisonText(metric.comparison) }}</small>
+          </dd>
+        </div>
+      </dl>
 
       <MonthlyInsightsSection :insights="report.insights" />
 
@@ -54,8 +64,8 @@
         @retry="$emit('retry-trends')"
       />
 
-      <section class="monthly-report__section">
-        <AppSectionHeader title="Gastos por categor&#237;a" heading-id="report-spending-title" />
+      <section class="monthly-report__section" aria-labelledby="report-spending-title">
+        <AppSectionHeader title="Gastos por categor&#237;a" heading-id="report-spending-title" :heading-level="3" />
         <AppEmptyState
           v-if="!report.spending_by_category.categories.length"
           title="No hay gastos registrados en este mes."
@@ -68,13 +78,15 @@
             class="finance-spending-item"
           >
             <div class="finance-spending-item__header">
-              <strong>{{ category.category_name }}</strong>
-              <strong>{{ formatCurrencyCop(category.amount) }}</strong>
+              <strong class="monthly-report__category-name">{{ category.category_name }}</strong>
+              <strong class="monthly-report__category-amount">{{ formatCurrencyCop(category.amount) }}</strong>
             </div>
             <small>{{ movementLabel(category.transaction_count) }} &middot; {{ percentage(category.share_percentage) }}</small>
             <div
               class="finance-spending-item__bar"
               role="progressbar"
+              :aria-label="`Participaci\u00f3n de ${category.category_name}`"
+              :aria-valuetext="`${category.category_name}: ${percentage(category.share_percentage)} del gasto mensual`"
               :aria-valuenow="category.share_percentage"
               aria-valuemin="0"
               aria-valuemax="100"
@@ -85,8 +97,8 @@
         </ol>
       </section>
 
-      <section class="monthly-report__section">
-        <AppSectionHeader title="Presupuestos del mes">
+      <section class="monthly-report__section" aria-labelledby="report-budgets-title">
+        <AppSectionHeader title="Presupuestos del mes" heading-id="report-budgets-title" :heading-level="3">
           <template #actions>
             <RouterLink :to="{ name: 'finances-budgets' }" class="app-button app-button--secondary">
               Ver presupuestos
@@ -117,7 +129,7 @@
         </template>
       </section>
     </template>
-    <div v-else-if="error" class="monthly-report__error" role="alert">
+    <div v-if="error" class="monthly-report__error" role="alert">
       <p>{{ error }}</p>
       <Button type="button" label="Reintentar" icon="pi pi-refresh" severity="secondary" variant="outlined" @click="$emit('retry')" />
     </div>
@@ -174,8 +186,9 @@ function metric(key, label, amount, comparison, amountClass) {
 function comparisonText(comparison) {
   if (!comparison) return 'Movimientos registrados en este mes'
   if (comparison.percentage_change === null) return 'Sin base comparable'
-  const sign = comparison.absolute_change > 0 ? '+' : ''
-  return `${sign}${formatCurrencyCop(comparison.absolute_change)} \u00b7 ${sign}${comparison.percentage_change.toFixed(2)}%`
+  if (comparison.absolute_change === 0) return 'Sin cambios frente al mes anterior'
+  const direction = comparison.absolute_change > 0 ? 'Aument\u00f3' : 'Disminuy\u00f3'
+  return `${direction} ${formatCurrencyCop(Math.abs(comparison.absolute_change))} \u00b7 ${Math.abs(comparison.percentage_change).toFixed(2)}%`
 }
 
 function comparisonClass(key, comparison) {
@@ -205,10 +218,21 @@ function budgetStatusTone(budget) {
 .monthly-report,
 .monthly-report__section { display: grid; gap: 1rem; }
 .monthly-report__kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .85rem; }
+.monthly-report__kpis { padding: 0; margin: 0; }
+.monthly-report__kpis dt, .monthly-report__kpis dd { margin: 0; }
+.monthly-report__kpis dt { color: var(--app-text-muted); font-size: .82rem; }
+.monthly-report__kpis dd { display: grid; gap: .35rem; }
+.monthly-report .finance-spending-item__header { min-width: 0; }
+.monthly-report__category-name { min-width: 0; overflow-wrap: anywhere; }
+.monthly-report__category-amount { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; text-align: right; font-variant-numeric: tabular-nums; }
 .monthly-report__budgets { display: grid; gap: .6rem; padding: 0; margin: 0; list-style: none; }
 .monthly-report__budgets li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .8rem; border: 1px solid var(--app-border); border-radius: .7rem; }
+.monthly-report__budgets li > div { min-width: 0; }
+.monthly-report__budgets li strong,
+.monthly-report__budgets li small { overflow-wrap: anywhere; }
 .monthly-report__budgets small { display: block; margin-top: .2rem; color: var(--app-text-muted); }
 .monthly-report__error { display: flex; align-items: center; gap: 1rem; color: var(--app-text-muted); }
+.monthly-report__loading-status { margin: 0; color: var(--app-text-muted); font-size: .86rem; }
 .monthly-report__comparison--neutral { color: var(--app-text-muted); }
 .monthly-report__comparison--success { color: var(--app-success); }
 .monthly-report__comparison--danger { color: var(--app-danger); }
@@ -217,5 +241,7 @@ function budgetStatusTone(budget) {
   .monthly-report__kpis { grid-template-columns: 1fr; }
   .monthly-report__budgets li,
   .monthly-report__error { align-items: flex-start; flex-direction: column; }
+  .monthly-report .finance-spending-item__header { flex-wrap: wrap; }
+  .monthly-report__category-amount { margin-left: auto; }
 }
 </style>

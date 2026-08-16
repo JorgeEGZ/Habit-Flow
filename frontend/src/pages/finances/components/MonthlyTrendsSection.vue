@@ -1,7 +1,9 @@
 <template>
-  <section class="monthly-trends" :aria-busy="loading">
+  <section class="monthly-trends" aria-labelledby="monthly-trends-title" :aria-busy="loading">
     <AppSectionHeader
       title="Tendencia de 6 meses"
+      heading-id="monthly-trends-title"
+      :heading-level="3"
       description="Evolución de tus movimientos reales hasta el mes seleccionado."
     />
 
