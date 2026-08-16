@@ -22,15 +22,20 @@ timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 backup_name="habitflow-$timestamp.dump"
 temporary_backup="$BACKUP_DIR/$backup_name.tmp"
 backup_file="$BACKUP_DIR/$backup_name"
-temporary_checksum="$temporary_backup.sha256"
 checksum_file="$backup_file.sha256"
 
 echo "Creating PostgreSQL backup: $backup_name"
 compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "$temporary_backup"
 compose exec -T postgres pg_restore --list "/backups/$backup_name.tmp" >/dev/null
-sha256sum "$temporary_backup" > "$temporary_checksum"
 mv "$temporary_backup" "$backup_file"
-mv "$temporary_checksum" "$checksum_file"
+
+# Generate and validate the checksum after the final filename exists. This
+# keeps the checksum portable for later verification from BACKUP_DIR.
+(
+  cd "$BACKUP_DIR"
+  sha256sum "$backup_name" > "$backup_name.sha256"
+  sha256sum -c "$backup_name.sha256"
+)
 
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'habitflow-*.dump' -mtime "+$BACKUP_RETENTION_DAYS" -delete
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'habitflow-*.dump.sha256' -mtime "+$BACKUP_RETENTION_DAYS" -delete
