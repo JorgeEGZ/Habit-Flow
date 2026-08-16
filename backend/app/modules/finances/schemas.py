@@ -10,6 +10,22 @@ from pydantic import BaseModel, ConfigDict, Field
 AccountType = Literal["checking", "savings", "cash", "credit"]
 EntryType = Literal["income", "expense"]
 RecurringFrequency = Literal["daily", "weekly", "monthly"]
+MonthlyReportInsightCode = Literal[
+    "no_activity",
+    "budget_exceeded",
+    "budget_limit_reached",
+    "budget_near_limit",
+    "negative_net",
+    "positive_savings_rate",
+    "break_even",
+    "no_income",
+    "expenses_increased",
+    "expenses_decreased",
+    "expenses_no_comparison",
+    "top_spending_category",
+]
+MonthlyReportInsightTone = Literal["neutral", "info", "success", "warning", "danger"]
+MonthlyReportInsightValue = str | int | float | bool | None
 
 
 class AccountBase(BaseModel):
@@ -241,6 +257,12 @@ class MonthlyReportComparisons(BaseModel):
     net: MonthlyMetricComparison
 
 
+class MonthlyReportInsight(BaseModel):
+    code: MonthlyReportInsightCode
+    tone: MonthlyReportInsightTone
+    values: dict[str, MonthlyReportInsightValue] = Field(default_factory=dict)
+
+
 class MonthlyFinancialReportRead(BaseModel):
     month: str
     period_start: date
@@ -253,6 +275,7 @@ class MonthlyFinancialReportRead(BaseModel):
     comparisons: MonthlyReportComparisons
     spending_by_category: SpendingByCategoryRead
     monthly_budgets: MonthlyCategoryBudgetsRead
+    insights: list[MonthlyReportInsight] = Field(default_factory=list)
 
 
 class MonthlyTrendPoint(BaseModel):

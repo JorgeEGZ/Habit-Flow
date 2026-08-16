@@ -48,6 +48,7 @@ from app.modules.finances.schemas import (
     MonthlyFinancialTrendsRead,
     MonthlyMetricComparison,
     MonthlyReportComparisons,
+    MonthlyReportInsight,
     MonthlyTransactionSummary,
     MonthlyTrendPoint,
     RecurringTransactionCreate,
@@ -159,6 +160,174 @@ def _comparison(current_amount: int, previous_amount: int) -> MonthlyMetricCompa
         absolute_change=absolute_change,
         percentage_change=percentage_change,
     )
+
+
+def _savings_rate(*, net: int, total_income: int) -> float | None:
+    if total_income <= 0:
+        return None
+    return float(
+        (Decimal(net) * Decimal("100") / Decimal(total_income)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
+
+
+def _highest_usage_budget(budgets: list[MonthlyCategoryBudgetProgress]) -> MonthlyCategoryBudgetProgress:
+    return sorted(
+        budgets,
+        key=lambda budget: (
+            -budget.usage_percentage,
+            budget.category_name.casefold(),
+            str(budget.category_id),
+        ),
+    )[0]
+
+
+def _build_monthly_report_insights(
+    *,
+    current: MonthlyTransactionSummary,
+    expense_comparison: MonthlyMetricComparison,
+    spending: SpendingByCategoryRead,
+    budgets: MonthlyCategoryBudgetsRead,
+) -> list[MonthlyReportInsight]:
+    if current.transaction_count == 0:
+        return [MonthlyReportInsight(code="no_activity", tone="info")]
+
+    insights: list[MonthlyReportInsight] = []
+
+    exceeded_budgets = [budget for budget in budgets.budgets if budget.usage_percentage > 100]
+    if exceeded_budgets:
+        insights.append(
+            MonthlyReportInsight(
+                code="budget_exceeded",
+                tone="danger",
+                values={
+                    "count": len(exceeded_budgets),
+                    "total_over_budget_amount": sum(
+                        budget.over_budget_amount for budget in exceeded_budgets
+                    ),
+                },
+            )
+        )
+    else:
+        limit_reached_budgets = [
+            budget for budget in budgets.budgets if budget.usage_percentage == 100
+        ]
+        near_limit_budgets = [
+            budget
+            for budget in budgets.budgets
+            if 80 <= budget.usage_percentage < 100
+        ]
+        if limit_reached_budgets:
+            budget = _highest_usage_budget(limit_reached_budgets)
+            insights.append(
+                MonthlyReportInsight(
+                    code="budget_limit_reached",
+                    tone="warning",
+                    values={
+                        "count": len(limit_reached_budgets),
+                        "highest_usage_percentage": budget.usage_percentage,
+                        "category_name": budget.category_name,
+                    },
+                )
+            )
+        elif near_limit_budgets:
+            budget = _highest_usage_budget(near_limit_budgets)
+            insights.append(
+                MonthlyReportInsight(
+                    code="budget_near_limit",
+                    tone="warning",
+                    values={
+                        "count": len(near_limit_budgets),
+                        "highest_usage_percentage": budget.usage_percentage,
+                        "category_name": budget.category_name,
+                    },
+                )
+            )
+
+    if current.total_income == 0 and current.total_expenses > 0:
+        insights.append(MonthlyReportInsight(code="no_income", tone="warning"))
+    elif current.net < 0:
+        insights.append(
+            MonthlyReportInsight(
+                code="negative_net",
+                tone="danger",
+                values={"net": current.net, "shortfall_amount": abs(current.net)},
+            )
+        )
+    elif current.net == 0:
+        insights.append(MonthlyReportInsight(code="break_even", tone="neutral"))
+    else:
+        insights.append(
+            MonthlyReportInsight(
+                code="positive_savings_rate",
+                tone="success",
+                values={
+                    "net": current.net,
+                    "savings_rate": _savings_rate(
+                        net=current.net,
+                        total_income=current.total_income,
+                    ),
+                },
+            )
+        )
+
+    if expense_comparison.previous_amount == 0 and expense_comparison.current_amount > 0:
+        insights.append(
+            MonthlyReportInsight(
+                code="expenses_no_comparison",
+                tone="info",
+                values={
+                    "current_amount": expense_comparison.current_amount,
+                    "previous_amount": expense_comparison.previous_amount,
+                    "absolute_change": expense_comparison.absolute_change,
+                    "percentage_change": expense_comparison.percentage_change,
+                },
+            )
+        )
+    elif expense_comparison.absolute_change > 0:
+        insights.append(
+            MonthlyReportInsight(
+                code="expenses_increased",
+                tone="warning",
+                values={
+                    "current_amount": expense_comparison.current_amount,
+                    "previous_amount": expense_comparison.previous_amount,
+                    "absolute_change": expense_comparison.absolute_change,
+                    "percentage_change": expense_comparison.percentage_change,
+                },
+            )
+        )
+    elif expense_comparison.absolute_change < 0:
+        insights.append(
+            MonthlyReportInsight(
+                code="expenses_decreased",
+                tone="success",
+                values={
+                    "current_amount": expense_comparison.current_amount,
+                    "previous_amount": expense_comparison.previous_amount,
+                    "absolute_change": expense_comparison.absolute_change,
+                    "percentage_change": expense_comparison.percentage_change,
+                },
+            )
+        )
+
+    if spending.categories:
+        category = spending.categories[0]
+        insights.append(
+            MonthlyReportInsight(
+                code="top_spending_category",
+                tone="info",
+                values={
+                    "category_id": str(category.category_id),
+                    "category_name": category.category_name,
+                    "amount": category.amount,
+                    "share_percentage": category.share_percentage,
+                },
+            )
+        )
+
+    return insights[:4]
 
 
 def resolve_transaction_export_dates(
@@ -856,6 +1025,11 @@ async def get_monthly_financial_report(
     budgets = await get_monthly_budgets(
         session, user_id=user_id, month=selected_month, today=period_start, spending_summary=spending
     )
+    comparisons = MonthlyReportComparisons(
+        income=_comparison(current.total_income, previous.total_income),
+        expenses=_comparison(current.total_expenses, previous.total_expenses),
+        net=_comparison(current.net, previous.net),
+    )
     return MonthlyFinancialReportRead(
         month=selected_month,
         period_start=period_start,
@@ -865,13 +1039,15 @@ async def get_monthly_financial_report(
         previous_period_end=previous_period_end,
         current=current,
         previous=previous,
-        comparisons=MonthlyReportComparisons(
-            income=_comparison(current.total_income, previous.total_income),
-            expenses=_comparison(current.total_expenses, previous.total_expenses),
-            net=_comparison(current.net, previous.net),
-        ),
+        comparisons=comparisons,
         spending_by_category=spending,
         monthly_budgets=budgets,
+        insights=_build_monthly_report_insights(
+            current=current,
+            expense_comparison=comparisons.expenses,
+            spending=spending,
+            budgets=budgets,
+        ),
     )
 
 
@@ -915,14 +1091,7 @@ async def get_monthly_financial_trends(
             (0, 0, 0, 0, 0),
         )
         net = income - expenses
-        savings_rate = None
-        if income > 0:
-            savings_rate = float(
-                (Decimal(net) * Decimal("100") / Decimal(income)).quantize(
-                    Decimal("0.01"),
-                    rounding=ROUND_HALF_UP,
-                )
-            )
+        savings_rate = _savings_rate(net=net, total_income=income)
         months.append(
             MonthlyTrendPoint(
                 month=month_key,

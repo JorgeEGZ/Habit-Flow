@@ -89,6 +89,7 @@ async def test_monthly_report_uses_app_month_and_empty_values(
         "transaction_count": 0, "income_transaction_count": 0, "expense_transaction_count": 0,
     }
     assert body["comparisons"]["income"]["percentage_change"] is None
+    assert body["insights"] == [{"code": "no_activity", "tone": "info", "values": {}}]
 
 
 async def test_monthly_trends_fill_empty_months_and_use_app_month(
@@ -203,6 +204,12 @@ async def test_monthly_report_aggregates_transactions_spending_and_budgets(
     assert body["spending_by_category"]["total_expenses"] == 350
     assert body["monthly_budgets"]["total_spent_amount"] == 300
     assert body["monthly_budgets"]["budgets"][0]["remaining_amount"] == 100
+    assert [item["code"] for item in body["insights"]] == [
+        "positive_savings_rate",
+        "expenses_increased",
+        "top_spending_category",
+    ]
+    assert body["insights"][-1]["values"]["category_name"] == "Food"
 
 
 async def test_monthly_trends_aggregate_real_transactions_and_scope_users(

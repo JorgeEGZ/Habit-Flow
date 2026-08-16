@@ -1,6 +1,7 @@
 """Service tests for the finances module."""
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 import pytest
@@ -27,12 +28,18 @@ from app.modules.finances.schemas import (
     CategoryCreate,
     CategoryUpdate,
     MonthlyCategoryBudgetCreate,
+    MonthlyCategoryBudgetProgress,
+    MonthlyCategoryBudgetsRead,
     MonthlyCategoryBudgetUpdate,
+    MonthlyMetricComparison,
+    MonthlyTransactionSummary,
     RecurringTransactionCreate,
     RecurringOccurrenceRegistrationCreate,
     RecurringTransactionUpdate,
     TransactionCreate,
     TransactionUpdate,
+    SpendingByCategoryItem,
+    SpendingByCategoryRead,
 )
 from app.modules.users.models import User
 
@@ -43,6 +50,182 @@ async def _make_user(session: AsyncSession, email: str) -> User:
     await session.commit()
     await session.refresh(user)
     return user
+
+
+def _monthly_report_insights(
+    *,
+    income: int,
+    expenses: int,
+    transaction_count: int = 1,
+    previous_expenses: int = 0,
+    budget_usage: float | None = None,
+    category_name: str | None = "Food",
+) -> list:
+    current = MonthlyTransactionSummary(
+        total_income=income,
+        total_expenses=expenses,
+        net=income - expenses,
+        transaction_count=transaction_count,
+        income_transaction_count=1 if income else 0,
+        expense_transaction_count=1 if expenses else 0,
+    )
+    expense_comparison = MonthlyMetricComparison(
+        current_amount=expenses,
+        previous_amount=previous_expenses,
+        absolute_change=expenses - previous_expenses,
+        percentage_change=(
+            round((expenses - previous_expenses) * 100 / previous_expenses, 2)
+            if previous_expenses
+            else None
+        ),
+    )
+    spending = SpendingByCategoryRead(
+        month="2026-07",
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        total_expenses=expenses if category_name else 0,
+        categories=(
+            [
+                SpendingByCategoryItem(
+                    category_id=uuid.uuid4(),
+                    category_name=category_name,
+                    amount=expenses,
+                    transaction_count=1,
+                    share_percentage=100.0,
+                )
+            ]
+            if category_name
+            else []
+        ),
+    )
+    budgets = MonthlyCategoryBudgetsRead(
+        month="2026-07",
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        total_budget_amount=100 if budget_usage is not None else 0,
+        total_spent_amount=expenses if budget_usage is not None else 0,
+        total_remaining_amount=0,
+        total_over_budget_amount=max(expenses - 100, 0) if budget_usage is not None else 0,
+        budgets=(
+            [
+                MonthlyCategoryBudgetProgress(
+                    budget_id=uuid.uuid4(),
+                    category_id=uuid.uuid4(),
+                    category_name="Budget food",
+                    budget_amount=100,
+                    spent_amount=int(budget_usage),
+                    remaining_amount=0,
+                    over_budget_amount=max(int(budget_usage) - 100, 0),
+                    transaction_count=1,
+                    usage_percentage=budget_usage,
+                    exceeded=budget_usage > 100,
+                )
+            ]
+            if budget_usage is not None
+            else []
+        ),
+    )
+    return finances_service._build_monthly_report_insights(
+        current=current,
+        expense_comparison=expense_comparison,
+        spending=spending,
+        budgets=budgets,
+    )
+
+
+def test_monthly_report_insights_handle_no_activity_and_net_states() -> None:
+    assert [item.code for item in _monthly_report_insights(
+        income=0,
+        expenses=0,
+        transaction_count=0,
+        category_name=None,
+    )] == ["no_activity"]
+
+    negative = _monthly_report_insights(income=50, expenses=100, category_name=None)
+    assert negative[0].code == "negative_net"
+    assert negative[0].values["shortfall_amount"] == 50
+
+    no_income = _monthly_report_insights(income=0, expenses=100, category_name=None)
+    assert no_income[0].code == "no_income"
+
+    break_even = _monthly_report_insights(income=100, expenses=100, category_name=None)
+    assert break_even[0].code == "break_even"
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected_code"),
+    [
+        (79.99, None),
+        (80.0, "budget_near_limit"),
+        (99.99, "budget_near_limit"),
+        (100.0, "budget_limit_reached"),
+        (110.0, "budget_exceeded"),
+    ],
+)
+def test_monthly_report_insights_apply_budget_thresholds(
+    usage: float,
+    expected_code: str | None,
+) -> None:
+    insights = _monthly_report_insights(
+        income=200,
+        expenses=100,
+        budget_usage=usage,
+        category_name=None,
+    )
+    codes = [item.code for item in insights]
+    if expected_code is None:
+        assert not any(code.startswith("budget_") for code in codes)
+    else:
+        assert codes[0] == expected_code
+        if expected_code == "budget_exceeded":
+            assert insights[0].values["total_over_budget_amount"] == 10
+
+
+@pytest.mark.parametrize(
+    ("current_expenses", "previous_expenses", "expected_code"),
+    [
+        (100, 0, "expenses_no_comparison"),
+        (150, 100, "expenses_increased"),
+        (50, 100, "expenses_decreased"),
+        (100, 100, None),
+    ],
+)
+def test_monthly_report_insights_reuse_expense_comparisons(
+    current_expenses: int,
+    previous_expenses: int,
+    expected_code: str | None,
+) -> None:
+    insights = _monthly_report_insights(
+        income=200,
+        expenses=current_expenses,
+        previous_expenses=previous_expenses,
+        category_name=None,
+    )
+    comparison_codes = [item.code for item in insights if item.code.startswith("expenses_")]
+    assert comparison_codes == ([] if expected_code is None else [expected_code])
+
+
+def test_monthly_report_insights_round_savings_rate_and_limit_output() -> None:
+    insights = _monthly_report_insights(
+        income=32,
+        expenses=31,
+        previous_expenses=20,
+        budget_usage=110.0,
+        category_name="Food",
+    )
+    assert [item.code for item in insights] == [
+        "budget_exceeded",
+        "positive_savings_rate",
+        "expenses_increased",
+        "top_spending_category",
+    ]
+    assert insights[1].values["savings_rate"] == 3.13
+    assert insights[-1].values == {
+        "category_id": insights[-1].values["category_id"],
+        "category_name": "Food",
+        "amount": 31,
+        "share_percentage": 100.0,
+    }
 
 
 async def test_account_crud_and_dynamic_balance(session: AsyncSession) -> None:
