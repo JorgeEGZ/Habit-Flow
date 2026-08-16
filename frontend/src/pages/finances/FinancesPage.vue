@@ -178,18 +178,18 @@
       <MonthlyReportSection
         v-else-if="isReportsWorkspace"
         :report="selectedMonthlyReport"
-        :loading="financesStore.loadingMonthlyReport"
-        :error="financesStore.monthlyReportError"
+        :loading="loadingMonthlyReport"
+        :error="monthlyReportError"
         :month="reportMonth"
         :trends="selectedMonthlyTrends"
-        :trends-loading="financesStore.loadingMonthlyTrends"
-        :trends-error="financesStore.monthlyTrendsError"
+        :trends-loading="loadingMonthlyTrends"
+        :trends-error="monthlyTrendsError"
         :exporting="exportingMonthlyReport"
         :export-error="monthlyReportExportError"
-        @month-change="handleReportMonthChange"
-        @retry="loadMonthlyReport"
-        @retry-trends="loadMonthlyTrends(reportMonth)"
-        @export="handleMonthlyReportExport"
+        @month-change="changeMonthlyReportMonth"
+        @retry="retryMonthlyReport"
+        @retry-trends="retryMonthlyTrends"
+        @export="exportMonthlyReport"
       />
 
       <section v-else-if="isBudgetsWorkspace" class="finance-tab-panel finance-budget-panel">
@@ -853,6 +853,7 @@ import AppSectionHeader from '../../components/ui/AppSectionHeader.vue'
 import AppStatusBadge from '../../components/ui/AppStatusBadge.vue'
 import ExportActions from '../../components/ui/ExportActions.vue'
 import MonthlyReportSection from './components/MonthlyReportSection.vue'
+import { useMonthlyFinanceReport } from './composables/useMonthlyFinanceReport'
 import { useDashboardStore } from '../../stores/dashboard'
 import { useFinancesStore } from '../../stores/finances'
 import * as financesService from '../../services/finances'
@@ -887,8 +888,6 @@ const transactionExportError = ref('')
 const exportingTransactionFormat = ref('')
 const exportingBudgetFormat = ref('')
 const budgetExportError = ref('')
-const exportingMonthlyReport = ref(false)
-const monthlyReportExportError = ref('')
 const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
 const budgetMonth = ref('')
@@ -896,9 +895,6 @@ const appliedBudgetMonth = ref('')
 const loadingMonthlyBudgetCategories = ref(false)
 const upcomingWindowDays = ref(30)
 const appliedUpcomingWindowDays = ref(0)
-const reportMonth = ref('')
-const monthlyReportLoadId = ref(0)
-const monthlyTrendsLoadId = ref(0)
 const deleteDialogVisible = ref(false)
 const pendingDelete = ref(null)
 
@@ -1007,14 +1003,22 @@ const isBudgetsWorkspace = computed(() => route.name === 'finances-budgets')
 const isReportsWorkspace = computed(() => route.name === 'finances-reports')
 const isRecurringWorkspace = computed(() => route.name === 'finances-recurring')
 const isAccountsWorkspace = computed(() => route.name === 'finances-accounts')
-const selectedMonthlyReport = computed(() => {
-  const report = financesStore.monthlyReport
-  return report && report.month === reportMonth.value ? report : null
-})
-const selectedMonthlyTrends = computed(() => {
-  const trends = financesStore.monthlyTrends
-  return trends && trends.anchor_month === reportMonth.value ? trends : null
-})
+const {
+  selectedMonth: reportMonth,
+  visibleReport: selectedMonthlyReport,
+  visibleTrends: selectedMonthlyTrends,
+  reportLoading: loadingMonthlyReport,
+  reportError: monthlyReportError,
+  trendsLoading: loadingMonthlyTrends,
+  trendsError: monthlyTrendsError,
+  exporting: exportingMonthlyReport,
+  exportError: monthlyReportExportError,
+  enterWorkspace: enterMonthlyReportWorkspace,
+  changeMonth: changeMonthlyReportMonth,
+  retryReport: retryMonthlyReport,
+  retryTrends: retryMonthlyTrends,
+  exportReport: exportMonthlyReport,
+} = useMonthlyFinanceReport(financesStore)
 
 const accounts = computed(() => financesStore.accounts)
 const categories = computed(() => financesStore.categories)
@@ -1202,58 +1206,10 @@ watch(
       void loadMonthlyBudgets()
     }
     if (routeName === 'finances-reports') {
-      void loadMonthlyReport()
+      void enterMonthlyReportWorkspace()
     }
   },
 )
-
-async function loadMonthlyReport() {
-  const loadId = ++monthlyReportLoadId.value
-  const requestedMonth = reportMonth.value || undefined
-  try {
-    const report = await financesStore.fetchMonthlyReport(requestedMonth)
-    if (loadId !== monthlyReportLoadId.value) return
-    if (!reportMonth.value) {
-      reportMonth.value = report.month
-    }
-    if (report.month !== reportMonth.value) return
-    await loadMonthlyTrends(report.month)
-  } catch {
-    return
-  }
-}
-
-async function loadMonthlyTrends(month = reportMonth.value) {
-  const loadId = ++monthlyTrendsLoadId.value
-  const requestedMonth = month || undefined
-  try {
-    const trends = await financesStore.fetchMonthlyTrends(requestedMonth)
-    if (loadId !== monthlyTrendsLoadId.value || trends.anchor_month !== reportMonth.value) return
-  } catch {
-    return
-  }
-}
-
-async function handleMonthlyReportExport() {
-  if (!reportMonth.value) return
-  monthlyReportExportError.value = ''
-  exportingMonthlyReport.value = true
-  try {
-    const blob = await financesService.exportMonthlyReport(reportMonth.value)
-    downloadBlob(blob, `habitflow-monthly-report-${reportMonth.value}.xlsx`)
-  } catch {
-    monthlyReportExportError.value = 'No fue posible exportar el reporte mensual.'
-  } finally {
-    exportingMonthlyReport.value = false
-  }
-}
-
-function handleReportMonthChange(month) {
-  if (!month || month === reportMonth.value) return
-  reportMonth.value = month
-  monthlyReportExportError.value = ''
-  void loadMonthlyReport()
-}
 
 function accountTypeLabel(type) {
   return accountTypes.find((entry) => entry.value === type)?.label ?? type
@@ -1766,7 +1722,7 @@ async function loadFinanceData() {
       dashboardStore.fetchFinances(),
       loadSpendingByCategory(),
       isBudgetsWorkspace.value ? loadMonthlyBudgets() : Promise.resolve(),
-      isReportsWorkspace.value ? loadMonthlyReport() : Promise.resolve(),
+      isReportsWorkspace.value ? enterMonthlyReportWorkspace() : Promise.resolve(),
       isRecurringWorkspace.value ? loadUpcomingRecurring() : Promise.resolve(),
     ])
   } finally {
