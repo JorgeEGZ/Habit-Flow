@@ -184,9 +184,12 @@
         :trends="financesStore.monthlyTrends"
         :trends-loading="financesStore.loadingMonthlyTrends"
         :trends-error="financesStore.monthlyTrendsError"
+        :exporting="exportingMonthlyReport"
+        :export-error="monthlyReportExportError"
         @month-change="handleReportMonthChange"
         @retry="loadMonthlyReport"
         @retry-trends="loadMonthlyTrends(reportMonth)"
+        @export="handleMonthlyReportExport"
       />
 
       <section v-else-if="isBudgetsWorkspace" class="finance-tab-panel finance-budget-panel">
@@ -884,6 +887,8 @@ const transactionExportError = ref('')
 const exportingTransactionFormat = ref('')
 const exportingBudgetFormat = ref('')
 const budgetExportError = ref('')
+const exportingMonthlyReport = ref(false)
+const monthlyReportExportError = ref('')
 const spendingMonth = ref('')
 const appliedSpendingMonth = ref('')
 const budgetMonth = ref('')
@@ -1207,6 +1212,20 @@ async function loadMonthlyTrends(month = reportMonth.value) {
     await financesStore.fetchMonthlyTrends(month || undefined)
   } catch {
     return
+  }
+}
+
+async function handleMonthlyReportExport() {
+  if (!reportMonth.value) return
+  monthlyReportExportError.value = ''
+  exportingMonthlyReport.value = true
+  try {
+    const blob = await financesService.exportMonthlyReport(reportMonth.value)
+    downloadBlob(blob, `habitflow-monthly-report-${reportMonth.value}.xlsx`)
+  } catch {
+    monthlyReportExportError.value = 'No fue posible exportar el reporte mensual.'
+  } finally {
+    exportingMonthlyReport.value = false
   }
 }
 

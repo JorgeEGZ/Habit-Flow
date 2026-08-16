@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from io import BytesIO, StringIO
 from typing import Any
@@ -15,6 +16,14 @@ from app.core.config import get_app_timezone, get_settings
 
 CSV_MEDIA_TYPE = "text/csv; charset=utf-8"
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@dataclass(frozen=True)
+class XlsxWorksheet:
+    title: str
+    headers: Sequence[str]
+    rows: Iterable[Sequence[Any]]
+    percentage_headers: frozenset[str] = frozenset()
 
 
 def current_app_date() -> date:
@@ -59,33 +68,35 @@ def csv_export_response(
     )
 
 
-def xlsx_export_response(
-    *,
-    headers: Sequence[str],
-    rows: Iterable[Sequence[Any]],
-    filename: str,
-    worksheet_title: str,
-) -> Response:
+def xlsx_workbook_response(*, worksheets: Sequence[XlsxWorksheet], filename: str) -> Response:
+    if not worksheets:
+        raise ValueError("At least one worksheet is required.")
+
     workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = worksheet_title[:31]
-    worksheet.append(list(headers))
-    for cell in worksheet[1]:
-        cell.font = Font(bold=True)
+    workbook.remove(workbook.active)
 
-    sanitized_rows = _sanitize_rows(rows)
-    for row in sanitized_rows:
-        worksheet.append(row)
+    for worksheet_spec in worksheets:
+        worksheet = workbook.create_sheet(worksheet_spec.title[:31])
+        headers = list(worksheet_spec.headers)
+        worksheet.append(headers)
+        for cell in worksheet[1]:
+            cell.font = Font(bold=True)
 
-    worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(1, len(sanitized_rows) + 1)}"
-    for index, header in enumerate(headers, start=1):
-        values = [header, *(row[index - 1] for row in sanitized_rows)]
-        width = min(max(max((len(str(value)) for value in values), default=0) + 2, 12), 42)
-        worksheet.column_dimensions[get_column_letter(index)].width = width
-        if header == "usage_percentage":
-            for cell in worksheet[get_column_letter(index)][1:]:
-                cell.number_format = "0.00"
+        sanitized_rows = _sanitize_rows(worksheet_spec.rows)
+        for row in sanitized_rows:
+            worksheet.append(row)
+
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = (
+            f"A1:{get_column_letter(len(headers))}{max(1, len(sanitized_rows) + 1)}"
+        )
+        for index, header in enumerate(headers, start=1):
+            values = [header, *(row[index - 1] for row in sanitized_rows)]
+            width = min(max(max((len(str(value)) for value in values), default=0) + 2, 12), 42)
+            worksheet.column_dimensions[get_column_letter(index)].width = width
+            if header in worksheet_spec.percentage_headers:
+                for cell in worksheet[get_column_letter(index)][1:]:
+                    cell.number_format = "0.00"
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -96,4 +107,24 @@ def xlsx_export_response(
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "private, no-store",
         },
+    )
+
+
+def xlsx_export_response(
+    *,
+    headers: Sequence[str],
+    rows: Iterable[Sequence[Any]],
+    filename: str,
+    worksheet_title: str,
+) -> Response:
+    return xlsx_workbook_response(
+        worksheets=[
+            XlsxWorksheet(
+                title=worksheet_title,
+                headers=headers,
+                rows=rows,
+                percentage_headers=frozenset({"usage_percentage"}),
+            )
+        ],
+        filename=filename,
     )

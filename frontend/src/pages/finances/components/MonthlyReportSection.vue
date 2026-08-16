@@ -14,8 +14,21 @@
             @input="$emit('month-change', $event.target.value)"
           />
         </label>
+        <Button
+          type="button"
+          label="Exportar Excel"
+          icon="pi pi-file-excel"
+          severity="secondary"
+          variant="outlined"
+          class="app-button app-button--secondary"
+          :loading="exporting"
+          :disabled="!month || exporting"
+          @click="$emit('export')"
+        />
       </template>
     </AppSectionHeader>
+
+    <p v-if="exportError" class="monthly-report__error" role="alert">{{ exportError }}</p>
 
     <div v-if="loading && !report" class="finance-skeleton-grid" aria-label="Cargando reporte mensual">
       <article v-for="index in 4" :key="index" class="finance-skeleton">
@@ -127,9 +140,11 @@ const props = defineProps({
   trends: { type: Object, default: null },
   trendsLoading: Boolean,
   trendsError: { type: String, default: '' },
+  exporting: Boolean,
+  exportError: { type: String, default: '' },
 })
 
-defineEmits(['month-change', 'retry', 'retry-trends'])
+defineEmits(['month-change', 'retry', 'retry-trends', 'export'])
 
 const metrics = computed(() => {
   if (!props.report) return []
