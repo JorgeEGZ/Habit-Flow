@@ -45,6 +45,8 @@
         </article>
       </div>
 
+      <MonthlyInsightsSection :insights="report.insights" />
+
       <MonthlyTrendsSection
         :trends="trends"
         :loading="trendsLoading"
@@ -129,6 +131,7 @@ import Button from 'primevue/button'
 import AppEmptyState from '../../../components/ui/AppEmptyState.vue'
 import AppSectionHeader from '../../../components/ui/AppSectionHeader.vue'
 import AppStatusBadge from '../../../components/ui/AppStatusBadge.vue'
+import MonthlyInsightsSection from './MonthlyInsightsSection.vue'
 import MonthlyTrendsSection from './MonthlyTrendsSection.vue'
 import { formatCurrencyCop } from '../../../utils/format'
 

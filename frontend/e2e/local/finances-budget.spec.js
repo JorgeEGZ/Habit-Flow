@@ -91,7 +91,7 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
 
   await page.goto('/finances/reports')
   await expect(page.getByRole('heading', { name: 'Reporte mensual' })).toBeVisible()
-  const reportMonth = page.getByLabel('Mes')
+  const reportMonth = page.getByRole('textbox', { name: 'Mes' })
   await expect(reportMonth).toHaveValue(/^\d{4}-\d{2}$/)
   const reportResponse = page.waitForResponse((response) => (
     response.url().includes('/finances/reports/monthly?month=2026-01')
@@ -104,6 +104,9 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
   await reportMonth.fill('2026-01')
   await reportResponse
   await trendsResponse
+  await expect(page.getByRole('heading', { name: 'Lectura del mes' })).toBeVisible()
+  await expect(page.getByText('No hay movimientos registrados en este mes. Registra ingresos y gastos para obtener una lectura financiera.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ir a movimientos' })).toHaveAttribute('href', '/finances/movements')
   await expect(page.getByRole('heading', { name: 'Tendencia de 6 meses' })).toBeVisible()
   await expect(page.getByText('No hay gastos registrados en este mes.')).toBeVisible()
   const [reportDownload] = await Promise.all([
