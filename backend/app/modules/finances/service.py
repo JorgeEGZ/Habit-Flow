@@ -146,6 +146,7 @@ def _shift_month_start(month_start: date, offset: int) -> date:
 
 
 def _comparison(current_amount: int, previous_amount: int) -> MonthlyMetricComparison:
+    """Build a comparison with an absolute base, zero-base ``None``, and ROUND_HALF_UP percentages."""
     absolute_change = current_amount - previous_amount
     percentage_change = None
     if previous_amount:
@@ -163,6 +164,7 @@ def _comparison(current_amount: int, previous_amount: int) -> MonthlyMetricCompa
 
 
 def _savings_rate(*, net: int, total_income: int) -> float | None:
+    """Return the ROUND_HALF_UP net share of income, or ``None`` without a positive income."""
     if total_income <= 0:
         return None
     return float(
@@ -190,6 +192,7 @@ def _build_monthly_report_insights(
     spending: SpendingByCategoryRead,
     budgets: MonthlyCategoryBudgetsRead,
 ) -> list[MonthlyReportInsight]:
+    """Create at most four read-only insights in deterministic budget, net, expense, category order."""
     if current.transaction_count == 0:
         return [MonthlyReportInsight(code="no_activity", tone="info")]
 
@@ -1002,6 +1005,7 @@ async def get_monthly_financial_report(
     month: str | None = None,
     today: date | None = None,
 ) -> MonthlyFinancialReportRead:
+    """Read one month and its predecessor from one app-local date without writes."""
     selected_month, period_start, period_end = _spending_month_bounds(month, today=today or current_app_date())
     previous_start = _previous_month_start(period_start)
     previous_month, previous_period_start, previous_period_end = _spending_month_bounds(
@@ -1121,6 +1125,7 @@ async def get_monthly_financial_report_export_data(
     user_id: uuid.UUID,
     month: str | None = None,
 ) -> MonthlyFinancialReportExportData:
+    """Build report and trend export rows from one captured app-local date without writes."""
     today = current_app_date()
     report = await get_monthly_financial_report(
         session,
