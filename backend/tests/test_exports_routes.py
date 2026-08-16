@@ -173,6 +173,7 @@ async def test_monthly_report_xlsx_export_reuses_report_data_and_is_scoped(
     assert response.headers["content-disposition"].endswith('habitflow-monthly-report-2026-07.xlsx"')
     workbook = load_workbook(BytesIO(response.content))
     assert workbook.sheetnames == ["Summary", "Spending by Category", "Budgets", "Six-Month Trends"]
+    assert "Insights" not in workbook.sheetnames
 
     summary = workbook["Summary"]
     assert [cell.value for cell in summary[1]] == [
@@ -247,6 +248,10 @@ async def test_monthly_report_xlsx_allows_future_month(client: AsyncClient) -> N
     )
     assert response.status_code == 200
     assert response.headers["content-disposition"].endswith('habitflow-monthly-report-2030-01.xlsx"')
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook.sheetnames == ["Summary", "Spending by Category", "Budgets", "Six-Month Trends"]
+    assert "Insights" not in workbook.sheetnames
+    assert workbook["Summary"].max_row == 2
 
 
 async def test_transaction_exports_filter_scope_and_sanitize_cells(client: AsyncClient) -> None:

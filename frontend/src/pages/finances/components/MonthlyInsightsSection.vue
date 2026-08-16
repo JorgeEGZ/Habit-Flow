@@ -4,6 +4,7 @@
       title="Lectura del mes"
       description="Observaciones basadas en tus movimientos reales y presupuestos del mes seleccionado."
       heading-id="monthly-insights-title"
+      :heading-level="3"
     />
 
     <AppEmptyState
@@ -16,7 +17,7 @@
         <div class="monthly-insights__heading">
           <i :class="iconFor(insight.code)" aria-hidden="true"></i>
           <div>
-            <h3>{{ titleFor(insight.code) }}</h3>
+            <h4>{{ titleFor(insight.code) }}</h4>
             <AppStatusBadge :label="toneLabel(insight.tone)" :tone="insight.tone" />
           </div>
         </div>
@@ -58,7 +59,7 @@ function titleFor(code) {
     negative_net: 'Balance neto negativo',
     positive_savings_rate: 'Ingreso restante',
     break_even: 'Balance del mes',
-    no_income: 'Ingresos pendientes',
+    no_income: 'Sin ingresos registrados',
     expenses_increased: 'Gastos frente al mes anterior',
     expenses_decreased: 'Gastos frente al mes anterior',
     expenses_no_comparison: 'Comparación de gastos',
@@ -104,7 +105,7 @@ function messageFor(insight) {
 
   switch (insight.code) {
     case 'no_activity':
-      return 'No hay movimientos registrados en este mes. Registra ingresos y gastos para obtener una lectura financiera.'
+      return 'No hay movimientos registrados para el mes seleccionado. Registra ingresos y gastos para obtener una lectura financiera.'
     case 'budget_exceeded':
       return `${budgetLabel} superaron el límite por un total de ${formatCurrencyCop(values.total_over_budget_amount || 0)}.`
     case 'budget_limit_reached':
@@ -140,7 +141,7 @@ function messageFor(insight) {
 .monthly-insights__heading { display: flex; align-items: flex-start; gap: .7rem; }
 .monthly-insights__heading > i { margin-top: .16rem; color: var(--app-accent); font-size: 1rem; }
 .monthly-insights__heading > div { display: grid; gap: .42rem; min-width: 0; }
-.monthly-insights__heading h3 { margin: 0; color: var(--app-text); font-size: .95rem; }
+.monthly-insights__heading h4 { margin: 0; color: var(--app-text); font-size: .95rem; }
 .monthly-insights__item p { margin: 0; color: var(--app-text-muted); line-height: 1.48; }
 .monthly-insights__action { width: fit-content; color: var(--app-accent); font-size: .88rem; font-weight: 700; text-decoration: none; }
 .monthly-insights__action:hover, .monthly-insights__action:focus-visible { color: var(--app-text); text-decoration: underline; }

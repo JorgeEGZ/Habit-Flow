@@ -91,6 +91,10 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
 
   await page.goto('/finances/reports')
   await expect(page.getByRole('heading', { name: 'Reporte mensual' })).toBeVisible()
+  await expect(page.getByRole('progressbar', { name: `Participaci\u00f3n de ${categoryName}` })).toHaveAttribute(
+    'aria-valuetext',
+    `${categoryName}: 100.00% del gasto mensual`,
+  )
   const reportMonth = page.getByRole('textbox', { name: 'Mes' })
   await expect(reportMonth).toHaveValue(/^\d{4}-\d{2}$/)
   const reportResponse = page.waitForResponse((response) => (
@@ -105,7 +109,7 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
   await reportResponse
   await trendsResponse
   await expect(page.getByRole('heading', { name: 'Lectura del mes' })).toBeVisible()
-  await expect(page.getByText('No hay movimientos registrados en este mes. Registra ingresos y gastos para obtener una lectura financiera.')).toBeVisible()
+  await expect(page.getByText('No hay movimientos registrados para el mes seleccionado. Registra ingresos y gastos para obtener una lectura financiera.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Ir a movimientos' })).toHaveAttribute('href', '/finances/movements')
   await expect(page.getByRole('heading', { name: 'Tendencia de 6 meses' })).toBeVisible()
   await expect(page.getByText('No hay gastos registrados en este mes.')).toBeVisible()

@@ -228,6 +228,94 @@ def test_monthly_report_insights_round_savings_rate_and_limit_output() -> None:
     }
 
 
+def test_monthly_report_comparisons_handle_zero_and_negative_previous_values() -> None:
+    no_base = finances_service._comparison(120, 0)
+    assert no_base.absolute_change == 120
+    assert no_base.percentage_change is None
+
+    negative_net = finances_service._comparison(-50, -100)
+    assert negative_net.absolute_change == 50
+    assert negative_net.percentage_change == 50.0
+
+
+def test_monthly_report_insights_prioritize_exceeded_budget_and_tie_break_by_category() -> None:
+    budgets = [
+        MonthlyCategoryBudgetProgress(
+            budget_id=uuid.uuid4(),
+            category_id=uuid.uuid4(),
+            category_name="Zulu",
+            budget_amount=100,
+            spent_amount=90,
+            remaining_amount=10,
+            over_budget_amount=0,
+            transaction_count=1,
+            usage_percentage=90.0,
+            exceeded=False,
+        ),
+        MonthlyCategoryBudgetProgress(
+            budget_id=uuid.uuid4(),
+            category_id=uuid.uuid4(),
+            category_name="Alpha",
+            budget_amount=100,
+            spent_amount=90,
+            remaining_amount=10,
+            over_budget_amount=0,
+            transaction_count=1,
+            usage_percentage=90.0,
+            exceeded=False,
+        ),
+        MonthlyCategoryBudgetProgress(
+            budget_id=uuid.uuid4(),
+            category_id=uuid.uuid4(),
+            category_name="Housing",
+            budget_amount=100,
+            spent_amount=120,
+            remaining_amount=0,
+            over_budget_amount=20,
+            transaction_count=1,
+            usage_percentage=120.0,
+            exceeded=True,
+        ),
+    ]
+    current = MonthlyTransactionSummary(
+        total_income=200,
+        total_expenses=120,
+        net=80,
+        transaction_count=2,
+        income_transaction_count=1,
+        expense_transaction_count=1,
+    )
+    spending = SpendingByCategoryRead(
+        month="2026-07",
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        total_expenses=120,
+        categories=[],
+    )
+    summary = MonthlyCategoryBudgetsRead(
+        month="2026-07",
+        period_start=date(2026, 7, 1),
+        period_end=date(2026, 7, 31),
+        total_budget_amount=300,
+        total_spent_amount=300,
+        total_remaining_amount=20,
+        total_over_budget_amount=20,
+        budgets=budgets,
+    )
+
+    insights = finances_service._build_monthly_report_insights(
+        current=current,
+        expense_comparison=finances_service._comparison(120, 100),
+        spending=spending,
+        budgets=summary,
+    )
+
+    assert insights[0].code == "budget_exceeded"
+    assert insights[0].values == {"count": 1, "total_over_budget_amount": 20}
+    assert len(insights) <= 4
+    assert finances_service._highest_usage_budget(budgets[:2]).category_name == "Alpha"
+
+
 async def test_account_crud_and_dynamic_balance(session: AsyncSession) -> None:
     user = await _make_user(session, "fa1@example.com")
     account = await finances_service.create_account(

@@ -29,9 +29,11 @@ export const useFinancesStore = defineStore('finances', {
     monthlyReport: null,
     loadingMonthlyReport: false,
     monthlyReportError: '',
+    monthlyReportRequestId: 0,
     monthlyTrends: null,
     loadingMonthlyTrends: false,
     monthlyTrendsError: '',
+    monthlyTrendsRequestId: 0,
   }),
   actions: {
     async fetchAccounts() {
@@ -115,30 +117,46 @@ export const useFinancesStore = defineStore('finances', {
     },
 
     async fetchMonthlyReport(month) {
+      const requestId = ++this.monthlyReportRequestId
       this.loadingMonthlyReport = true
       this.monthlyReportError = ''
       try {
-        this.monthlyReport = await financesService.getMonthlyReport(month)
-        return this.monthlyReport
+        const report = await financesService.getMonthlyReport(month)
+        if (requestId === this.monthlyReportRequestId) {
+          this.monthlyReport = report
+        }
+        return report
       } catch (error) {
-        this.monthlyReportError = 'No fue posible cargar el reporte mensual.'
+        if (requestId === this.monthlyReportRequestId) {
+          this.monthlyReportError = 'No fue posible cargar el reporte mensual.'
+        }
         throw error
       } finally {
-        this.loadingMonthlyReport = false
+        if (requestId === this.monthlyReportRequestId) {
+          this.loadingMonthlyReport = false
+        }
       }
     },
 
     async fetchMonthlyTrends(month) {
+      const requestId = ++this.monthlyTrendsRequestId
       this.loadingMonthlyTrends = true
       this.monthlyTrendsError = ''
       try {
-        this.monthlyTrends = await financesService.getMonthlyTrends(month)
-        return this.monthlyTrends
+        const trends = await financesService.getMonthlyTrends(month)
+        if (requestId === this.monthlyTrendsRequestId) {
+          this.monthlyTrends = trends
+        }
+        return trends
       } catch (error) {
-        this.monthlyTrendsError = 'No fue posible cargar las tendencias mensuales.'
+        if (requestId === this.monthlyTrendsRequestId) {
+          this.monthlyTrendsError = 'No fue posible cargar las tendencias mensuales.'
+        }
         throw error
       } finally {
-        this.loadingMonthlyTrends = false
+        if (requestId === this.monthlyTrendsRequestId) {
+          this.loadingMonthlyTrends = false
+        }
       }
     },
 

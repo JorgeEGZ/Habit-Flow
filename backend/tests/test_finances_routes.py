@@ -82,6 +82,8 @@ async def test_monthly_report_uses_app_month_and_empty_values(
     body = response.json()
     assert body["month"] == "2026-01"
     assert body["previous_month"] == "2025-12"
+    assert body["previous_period_start"] == "2025-12-01"
+    assert body["previous_period_end"] == "2025-12-31"
     assert body["period_start"] == "2026-01-01"
     assert body["period_end"] == "2026-01-31"
     assert body["current"] == {
@@ -89,6 +91,24 @@ async def test_monthly_report_uses_app_month_and_empty_values(
         "transaction_count": 0, "income_transaction_count": 0, "expense_transaction_count": 0,
     }
     assert body["comparisons"]["income"]["percentage_change"] is None
+    assert body["insights"] == [{"code": "no_activity", "tone": "info", "values": {}}]
+
+
+async def test_monthly_report_allows_future_month_with_empty_data(client: AsyncClient) -> None:
+    token = await _register_and_login(client, email="future-report@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly",
+        headers=_auth_headers(token),
+        params={"month": "2030-01"},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["month"] == "2030-01"
+    assert body["period_start"] == "2030-01-01"
+    assert body["period_end"] == "2030-01-31"
+    assert body["previous_month"] == "2029-12"
+    assert body["current"]["transaction_count"] == 0
     assert body["insights"] == [{"code": "no_activity", "tone": "info", "values": {}}]
 
 
@@ -179,6 +199,38 @@ async def test_monthly_report_aggregates_transactions_spending_and_budgets(
     )
     assert budget.status_code == 201, budget.text
 
+    other_token = await _register_and_login(client, email="report-aggregate-other@example.com")
+    other_headers = _auth_headers(other_token)
+    other_account = await client.post(
+        "/api/v1/finances/accounts",
+        headers=other_headers,
+        json={"name": "Other cash", "type": "cash", "initial_balance": 0},
+    )
+    other_category = await client.post(
+        "/api/v1/finances/categories",
+        headers=other_headers,
+        json={"name": "Other food", "type": "expense"},
+    )
+    for transaction_date, amount in (("2026-07-01", 9999), ("2026-06-30", 8888)):
+        other_transaction = await client.post(
+            "/api/v1/finances/transactions",
+            headers=other_headers,
+            json={
+                "account_id": other_account.json()["id"],
+                "category_id": other_category.json()["id"],
+                "type": "expense",
+                "amount": amount,
+                "transaction_date": transaction_date,
+            },
+        )
+        assert other_transaction.status_code == 201, other_transaction.text
+    other_budget = await client.post(
+        "/api/v1/finances/budgets",
+        headers=other_headers,
+        json={"category_id": other_category.json()["id"], "month": "2026-07", "amount": 1},
+    )
+    assert other_budget.status_code == 201, other_budget.text
+
     response = await client.get(
         "/api/v1/finances/reports/monthly",
         headers=headers,
@@ -204,6 +256,8 @@ async def test_monthly_report_aggregates_transactions_spending_and_budgets(
     assert body["spending_by_category"]["total_expenses"] == 350
     assert body["monthly_budgets"]["total_spent_amount"] == 300
     assert body["monthly_budgets"]["budgets"][0]["remaining_amount"] == 100
+    assert [item["category_name"] for item in body["spending_by_category"]["categories"]] == ["Food", "Transport"]
+    assert [item["category_name"] for item in body["monthly_budgets"]["budgets"]] == ["Food"]
     assert [item["code"] for item in body["insights"]] == [
         "positive_savings_rate",
         "expenses_increased",
