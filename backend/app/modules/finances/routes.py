@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.core.dependencies import CurrentUser, DbSession
-from app.core.exports import csv_export_response, xlsx_export_response
+from app.core.exports import XlsxWorksheet, csv_export_response, xlsx_export_response, xlsx_workbook_response
 from app.modules.finances import service as finances_service
 from app.modules.finances.schemas import (
     AccountCreate,
@@ -61,6 +61,60 @@ MONTHLY_BUDGET_EXPORT_HEADERS = (
     "exceeded",
     "budget_id",
     "category_id",
+)
+MONTHLY_REPORT_SUMMARY_EXPORT_HEADERS = (
+    "month",
+    "period_start",
+    "period_end",
+    "total_income",
+    "total_expenses",
+    "net",
+    "transaction_count",
+    "income_transaction_count",
+    "expense_transaction_count",
+    "previous_month",
+    "previous_period_start",
+    "previous_period_end",
+    "previous_total_income",
+    "previous_total_expenses",
+    "previous_net",
+    "previous_transaction_count",
+    "income_absolute_change",
+    "income_percentage_change",
+    "expenses_absolute_change",
+    "expenses_percentage_change",
+    "net_absolute_change",
+    "net_percentage_change",
+)
+MONTHLY_REPORT_SPENDING_EXPORT_HEADERS = (
+    "month",
+    "category_name",
+    "amount",
+    "transaction_count",
+    "share_percentage",
+    "category_id",
+)
+MONTHLY_REPORT_TRENDS_EXPORT_HEADERS = (
+    "month",
+    "period_start",
+    "period_end",
+    "total_income",
+    "total_expenses",
+    "net",
+    "transaction_count",
+    "income_transaction_count",
+    "expense_transaction_count",
+    "savings_rate",
+)
+MONTHLY_REPORT_PERCENTAGE_HEADERS = frozenset(
+    {
+        "income_percentage_change",
+        "expenses_percentage_change",
+        "net_percentage_change",
+        "share_percentage",
+        "usage_percentage",
+        "savings_rate",
+    }
 )
 
 
@@ -418,6 +472,48 @@ async def get_monthly_financial_report(
 ) -> MonthlyFinancialReportRead:
     return await finances_service.get_monthly_financial_report(
         session, user_id=user.id, month=month
+    )
+
+
+@router.get("/reports/monthly.xlsx")
+async def export_monthly_financial_report_xlsx(
+    session: DbSession,
+    user: CurrentUser,
+    month: str | None = Query(default=None, pattern=MONTH_QUERY_PATTERN),
+) -> Response:
+    export_data = await finances_service.get_monthly_financial_report_export_data(
+        session,
+        user_id=user.id,
+        month=month,
+    )
+    return xlsx_workbook_response(
+        worksheets=[
+            XlsxWorksheet(
+                title="Summary",
+                headers=MONTHLY_REPORT_SUMMARY_EXPORT_HEADERS,
+                rows=export_data.summary_rows,
+                percentage_headers=MONTHLY_REPORT_PERCENTAGE_HEADERS,
+            ),
+            XlsxWorksheet(
+                title="Spending by Category",
+                headers=MONTHLY_REPORT_SPENDING_EXPORT_HEADERS,
+                rows=export_data.spending_rows,
+                percentage_headers=MONTHLY_REPORT_PERCENTAGE_HEADERS,
+            ),
+            XlsxWorksheet(
+                title="Budgets",
+                headers=MONTHLY_BUDGET_EXPORT_HEADERS,
+                rows=export_data.budget_rows,
+                percentage_headers=MONTHLY_REPORT_PERCENTAGE_HEADERS,
+            ),
+            XlsxWorksheet(
+                title="Six-Month Trends",
+                headers=MONTHLY_REPORT_TRENDS_EXPORT_HEADERS,
+                rows=export_data.trend_rows,
+                percentage_headers=MONTHLY_REPORT_PERCENTAGE_HEADERS,
+            ),
+        ],
+        filename=f"habitflow-monthly-report-{export_data.month}.xlsx",
     )
 
 

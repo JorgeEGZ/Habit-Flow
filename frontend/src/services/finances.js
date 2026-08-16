@@ -87,6 +87,14 @@ export async function getMonthlyTrends(month) {
   return data
 }
 
+export async function exportMonthlyReport(month) {
+  const { data } = await api.get('/finances/reports/monthly.xlsx', {
+    params: month ? { month } : undefined,
+    responseType: 'blob',
+  })
+  return data
+}
+
 export async function createMonthlyBudget(payload) {
   const { data } = await api.post('/finances/budgets', payload)
   return data

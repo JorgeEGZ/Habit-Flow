@@ -9,7 +9,8 @@ import pytest
 from httpx import AsyncClient
 from openpyxl import load_workbook
 
-from app.core.exports import current_app_date
+from app.core.exports import XlsxWorksheet, current_app_date, xlsx_workbook_response
+from app.modules.finances import service as finances_service
 
 pytestmark = pytest.mark.asyncio
 
@@ -54,11 +55,198 @@ async def test_export_endpoints_require_authentication(client: AsyncClient) -> N
         "/api/v1/finances/exports/transactions.xlsx",
         "/api/v1/finances/exports/monthly-budgets.csv",
         "/api/v1/finances/exports/monthly-budgets.xlsx",
+        "/api/v1/finances/reports/monthly.xlsx",
         "/api/v1/savings/exports/goals.csv",
         "/api/v1/savings/exports/goals.xlsx",
     ):
         response = await client.get(path)
         assert response.status_code == 401
+
+
+async def test_multi_sheet_xlsx_sanitizes_cells_and_formats_percentages() -> None:
+    response = xlsx_workbook_response(
+        worksheets=[
+            XlsxWorksheet(
+                title="Summary",
+                headers=("name", "savings_rate"),
+                rows=[["\x00=Unsafe", 12.5]],
+                percentage_headers=frozenset({"savings_rate"}),
+            )
+        ],
+        filename="test.xlsx",
+    )
+    workbook = load_workbook(BytesIO(response.body))
+    worksheet = workbook.active
+    assert worksheet["A2"].value == "'=Unsafe"
+    assert worksheet["B2"].value == 12.5
+    assert worksheet["B2"].number_format == "0.00"
+    assert worksheet.freeze_panes == "A2"
+    assert worksheet.auto_filter.ref == "A1:B2"
+
+
+async def test_monthly_report_xlsx_export_reuses_report_data_and_is_scoped(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 7, 22))
+    owner = await _register_and_login(client, "report-export-owner@example.com")
+    other = await _register_and_login(client, "report-export-other@example.com")
+    owner_headers = _headers(owner)
+    account_id, category_id = await _create_account_and_category(client, owner)
+    income_category = await client.post(
+        "/api/v1/finances/categories",
+        headers=owner_headers,
+        json={"name": "Income", "type": "income"},
+    )
+    assert income_category.status_code == 201
+    for payload in (
+        {
+            "account_id": account_id,
+            "category_id": income_category.json()["id"],
+            "type": "income",
+            "amount": 1000,
+            "transaction_date": "2026-07-01",
+        },
+        {
+            "account_id": account_id,
+            "category_id": category_id,
+            "type": "expense",
+            "amount": 600,
+            "transaction_date": "2026-07-31",
+        },
+    ):
+        response = await client.post(
+            "/api/v1/finances/transactions",
+            headers=owner_headers,
+            json=payload,
+        )
+        assert response.status_code == 201, response.text
+    budget = await client.post(
+        "/api/v1/finances/budgets",
+        headers=owner_headers,
+        json={"category_id": category_id, "month": "2026-07", "amount": 500},
+    )
+    assert budget.status_code == 201
+    recurring = await client.post(
+        "/api/v1/finances/recurring",
+        headers=owner_headers,
+        json={
+            "account_id": account_id,
+            "category_id": category_id,
+            "type": "expense",
+            "amount": 40,
+            "description": "Projection only until registered",
+            "frequency": "daily",
+            "start_date": "2026-07-15",
+        },
+    )
+    assert recurring.status_code == 201
+    registration = await client.post(
+        f"/api/v1/finances/recurring/{recurring.json()['id']}/registrations",
+        headers=owner_headers,
+        json={"transaction_date": "2026-07-15"},
+    )
+    assert registration.status_code == 201
+
+    other_account_id, other_category_id = await _create_account_and_category(client, other)
+    other_transaction = await client.post(
+        "/api/v1/finances/transactions",
+        headers=_headers(other),
+        json={
+            "account_id": other_account_id,
+            "category_id": other_category_id,
+            "type": "expense",
+            "amount": 9999,
+            "transaction_date": "2026-07-31",
+        },
+    )
+    assert other_transaction.status_code == 201
+
+    response = await client.get(
+        "/api/v1/finances/reports/monthly.xlsx",
+        headers=owner_headers,
+        params={"month": "2026-07"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["content-disposition"].endswith('habitflow-monthly-report-2026-07.xlsx"')
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook.sheetnames == ["Summary", "Spending by Category", "Budgets", "Six-Month Trends"]
+
+    summary = workbook["Summary"]
+    assert [cell.value for cell in summary[1]] == [
+        "month", "period_start", "period_end", "total_income", "total_expenses", "net",
+        "transaction_count", "income_transaction_count", "expense_transaction_count", "previous_month",
+        "previous_period_start", "previous_period_end", "previous_total_income", "previous_total_expenses",
+        "previous_net", "previous_transaction_count", "income_absolute_change", "income_percentage_change",
+        "expenses_absolute_change", "expenses_percentage_change", "net_absolute_change", "net_percentage_change",
+    ]
+    assert summary["A2"].value == "2026-07"
+    assert summary["D2"].value == 1000
+    assert summary["E2"].value == 640
+    assert summary["R2"].value is None
+    assert summary["R2"].number_format == "0.00"
+    assert summary.freeze_panes == "A2"
+    assert summary.auto_filter.ref == "A1:V2"
+    assert summary["A1"].font.bold is True
+
+    spending = workbook["Spending by Category"]
+    assert spending["B2"].value == "'=Formula category"
+    assert spending["C2"].value == 640
+    assert spending["E2"].number_format == "0.00"
+    assert "9999" not in response.content.decode("latin1")
+
+    budgets = workbook["Budgets"]
+    assert budgets["D2"].value == 640
+    assert budgets["H2"].value == 128.0
+    assert budgets["H2"].number_format == "0.00"
+
+    trends = workbook["Six-Month Trends"]
+    assert trends.max_row == 7
+    assert trends["A2"].value == "2026-02"
+    assert trends["A7"].value == "2026-07"
+    assert trends["J2"].value is None
+    assert trends["J7"].value == 36.0
+    assert trends["J7"].number_format == "0.00"
+
+
+async def test_monthly_report_xlsx_empty_data_uses_app_month(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(finances_service, "current_app_date", lambda: date(2026, 1, 22))
+    token = await _register_and_login(client, "empty-report-export@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly.xlsx",
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].endswith('habitflow-monthly-report-2026-01.xlsx"')
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook["Summary"].max_row == 2
+    assert workbook["Spending by Category"].max_row == 1
+    assert workbook["Budgets"].max_row == 1
+    assert workbook["Six-Month Trends"].max_row == 7
+
+
+@pytest.mark.parametrize("month", ["2026-7", "2026-13", "0000-01"])
+async def test_monthly_report_xlsx_rejects_invalid_month(client: AsyncClient, month: str) -> None:
+    token = await _register_and_login(client, f"invalid-report-export-{month}@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly.xlsx",
+        headers=_headers(token),
+        params={"month": month},
+    )
+    assert response.status_code == 422
+
+
+async def test_monthly_report_xlsx_allows_future_month(client: AsyncClient) -> None:
+    token = await _register_and_login(client, "future-report-export@example.com")
+    response = await client.get(
+        "/api/v1/finances/reports/monthly.xlsx",
+        headers=_headers(token),
+        params={"month": "2030-01"},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].endswith('habitflow-monthly-report-2030-01.xlsx"')
 
 
 async def test_transaction_exports_filter_scope_and_sanitize_cells(client: AsyncClient) -> None:

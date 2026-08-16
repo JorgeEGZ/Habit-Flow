@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -68,6 +69,15 @@ from app.modules.finances.schemas import (
 MONTH_PATTERN = re.compile(r"^[1-9]\d{3}-(0[1-9]|1[0-2])$")
 UPCOMING_RECURRING_WINDOWS = frozenset({7, 30})
 MAX_EXPORT_RANGE_DAYS = 366
+
+
+@dataclass(frozen=True)
+class MonthlyFinancialReportExportData:
+    month: str
+    summary_rows: list[list[object]]
+    spending_rows: list[list[object]]
+    budget_rows: list[list[object]]
+    trend_rows: list[list[object]]
 
 
 def _validate_positive_amount(amount: int, *, label: str) -> None:
@@ -933,6 +943,98 @@ async def get_monthly_financial_trends(
         period_end=anchor_end,
         month_count=6,
         months=months,
+    )
+
+
+async def get_monthly_financial_report_export_data(
+    session,
+    *,
+    user_id: uuid.UUID,
+    month: str | None = None,
+) -> MonthlyFinancialReportExportData:
+    today = current_app_date()
+    report = await get_monthly_financial_report(
+        session,
+        user_id=user_id,
+        month=month,
+        today=today,
+    )
+    trends = await get_monthly_financial_trends(
+        session,
+        user_id=user_id,
+        month=report.month,
+        today=today,
+    )
+    return MonthlyFinancialReportExportData(
+        month=report.month,
+        summary_rows=[
+            [
+                report.month,
+                report.period_start.isoformat(),
+                report.period_end.isoformat(),
+                report.current.total_income,
+                report.current.total_expenses,
+                report.current.net,
+                report.current.transaction_count,
+                report.current.income_transaction_count,
+                report.current.expense_transaction_count,
+                report.previous_month,
+                report.previous_period_start.isoformat(),
+                report.previous_period_end.isoformat(),
+                report.previous.total_income,
+                report.previous.total_expenses,
+                report.previous.net,
+                report.previous.transaction_count,
+                report.comparisons.income.absolute_change,
+                report.comparisons.income.percentage_change,
+                report.comparisons.expenses.absolute_change,
+                report.comparisons.expenses.percentage_change,
+                report.comparisons.net.absolute_change,
+                report.comparisons.net.percentage_change,
+            ]
+        ],
+        spending_rows=[
+            [
+                report.month,
+                category.category_name,
+                category.amount,
+                category.transaction_count,
+                category.share_percentage,
+                str(category.category_id),
+            ]
+            for category in report.spending_by_category.categories
+        ],
+        budget_rows=[
+            [
+                report.month,
+                budget.category_name,
+                budget.budget_amount,
+                budget.spent_amount,
+                budget.remaining_amount,
+                budget.over_budget_amount,
+                budget.transaction_count,
+                budget.usage_percentage,
+                str(budget.exceeded).lower(),
+                str(budget.budget_id),
+                str(budget.category_id),
+            ]
+            for budget in report.monthly_budgets.budgets
+        ],
+        trend_rows=[
+            [
+                trend.month,
+                trend.period_start.isoformat(),
+                trend.period_end.isoformat(),
+                trend.total_income,
+                trend.total_expenses,
+                trend.net,
+                trend.transaction_count,
+                trend.income_transaction_count,
+                trend.expense_transaction_count,
+                trend.savings_rate,
+            ]
+            for trend in trends.months
+        ],
     )
 
 

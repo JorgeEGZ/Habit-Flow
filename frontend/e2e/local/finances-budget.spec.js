@@ -106,6 +106,12 @@ test('crea movimientos reales y un presupuesto mensual local', async ({ page }) 
   await trendsResponse
   await expect(page.getByRole('heading', { name: 'Tendencia de 6 meses' })).toBeVisible()
   await expect(page.getByText('No hay gastos registrados en este mes.')).toBeVisible()
+  const [reportDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'Exportar Excel' }).click(),
+  ])
+  expect(reportDownload.suggestedFilename()).toBe('habitflow-monthly-report-2026-01.xlsx')
+  expect(await reportDownload.path()).not.toBeNull()
 
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: 'Presupuestos del mes' })).toBeVisible()
