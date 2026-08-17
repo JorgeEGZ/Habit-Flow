@@ -65,7 +65,7 @@ finance data into evidence.
   missing CSRF header are rejected.
 - [ ] External scans show 80/443 open, SSH restricted, and 5432/8000/5173 closed.
 - [ ] OCI NSG and UFW evidence is recorded. Do not enable HSTS or strict host
-  rejection until Sprint 3.2 validates them against the final domain.
+  rejection until final-domain HTTPS validation and separate approval are complete.
 
 ## GitHub Branch Protection
 
