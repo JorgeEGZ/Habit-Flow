@@ -18,6 +18,13 @@ Only Nginx publishes ports. The API and database remain on internal Docker
 networks. The production frontend is built by `frontend/Dockerfile.prod` and
 uses `/api/v1`, so Nginx keeps the frontend and API on the same HTTPS origin.
 
+The OCI Nginx edge limits only `POST /api/v1/auth/login`,
+`POST /api/v1/auth/register`, and `POST /api/v1/auth/refresh` by the directly
+connected client IP. Its initial limits are 5/minute with burst 5, 1/minute
+with burst 2, and 30/minute with burst 20. `OPTIONS` requests do not consume
+quota. This is an OCI-edge control only: keep transitional Render deployments
+read-only or configure equivalent edge protection before making them public.
+
 ## Target And Prerequisites
 
 Use an Always Free eligible `VM.Standard.A1.Flex` instance with **2 OCPU and
@@ -80,8 +87,8 @@ Set the following in `/etc/habitflow/oci.env`:
 - Persistent paths under `/srv/habitflow`.
 - `BACKEND_ENV_FILE` and `POSTGRES_ENV_FILE` pointing to the two external
   files above.
-- Optional OCI Object Storage namespace and bucket only when backup upload is
-  configured.
+- `OFFSITE_BACKUP_REQUIRED=true`, an OCI Object Storage namespace, and a
+  private Object Storage bucket. These are mandatory for a public launch.
 
 Set `DATABASE_URL` in the backend file using the Docker hostname:
 
@@ -165,22 +172,35 @@ against the application and PrimeVue.
 
 `backup-postgres.sh` creates a custom-format `pg_dump` under
 `/srv/habitflow/backups`, writes a SHA-256 checksum, validates the dump with
-`pg_restore --list`, and retains seven days by default:
+`pg_restore --list`, and retains seven days locally by default:
 
 ```sh
 HABITFLOW_OCI_ENV_FILE=/etc/habitflow/oci.env sh deploy/oci/scripts/backup-postgres.sh
 ```
 
-Schedule this daily. The script deletes only matching backup files inside the
-validated `BACKUP_DIR`. It can upload verified dumps when both
-`OCI_OBJECT_STORAGE_NAMESPACE` and `OCI_OBJECT_STORAGE_BUCKET` are set and
-the OCI CLI is available. Prefer OCI instance-principal authorization over
-credentials stored on the VM.
+Schedule this daily and run it before every production migration. With
+`OFFSITE_BACKUP_REQUIRED=true`, the command fails when the namespace, bucket,
+OCI CLI, instance-principal upload, or remote object verification fails. It
+uploads both the dump and its checksum, then verifies that both objects exist.
+The script uses `oci --auth instance_principal`; do not store OCI credentials
+in environment files.
 
-No automated restore is included. Rehearse recovery periodically by restoring
-one backup into an isolated PostgreSQL instance, checking `alembic current`,
-and exercising login plus a representative finance workflow. A backup that has
-not been restored is not a verified recovery plan.
+Create a private bucket with no public access, least-privilege instance
+principal policy limited to this backup bucket, encryption-at-rest verified in
+OCI, and at least 30 days of off-VM retention. Verify current OCI Free Tier
+Object Storage eligibility and capacity in the OCI console. A manual encrypted
+download is emergency/bootstrap recovery only, not the ongoing production
+backup control. Configure backup-age monitoring outside the application.
+
+No automated restore is included. The proposed launch objectives are RPO 24
+hours and RTO 4 hours. Rehearse recovery from an actual remote object in an
+isolated, non-production PostgreSQL target: download the dump and checksum,
+run `sha256sum -c`, run `pg_restore --list`, restore it, verify `alembic
+current` equals `alembic heads`, compare non-sensitive table counts, and run
+login plus representative read-only module smoke. Record backup age and total
+restore duration in `docs/PRODUCTION_LAUNCH_EVIDENCE.md`; remove the isolated
+copy only after a reviewer approves the evidence. A backup not restored this
+way is not verified recovery evidence.
 
 ## Monitoring, Rollback, And Render Migration
 

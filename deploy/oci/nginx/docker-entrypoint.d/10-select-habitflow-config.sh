@@ -11,8 +11,11 @@ esac
 
 template_dir=/etc/nginx/habitflow-templates
 target=/etc/nginx/templates/habitflow.conf.template
+include_dir=/etc/nginx/habitflow-includes
 
 mkdir -p "$(dirname "$target")"
+mkdir -p "$include_dir"
+cp "$template_dir"/includes/*.conf "$include_dir"/
 
 if [ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ] \
   && [ -f "/etc/letsencrypt/live/$domain/privkey.pem" ]; then
