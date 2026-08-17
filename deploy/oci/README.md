@@ -47,6 +47,11 @@ Before deployment, prepare:
 Do not use plain HTTP or an IP-only URL for production. Secure cookie-based
 authentication requires HTTPS and a stable domain.
 
+Before provisioning a VM, run the disposable local rehearsal in
+`docs/LOCAL_PRODUCTION_REHEARSAL.md` and complete the non-secret preparation
+items in `docs/OCI_PROVISIONING_CHECKLIST.md`. Those documents prepare the
+deployment path but do not replace final-domain launch evidence.
+
 ## VM Setup
 
 Install Docker using Docker's current Ubuntu instructions, then allow the

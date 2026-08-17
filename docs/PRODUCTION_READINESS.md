@@ -58,7 +58,7 @@ resolution or explicit risk acceptance before a final public GO decision.
 | PR-006 | P1 | OCI backend container runs as root. | A container compromise has a larger local blast radius. | Validate a non-root backend image across local Compose, Render, OCI, migrations, and bind mounts. | Deferred to Sprint 3.2 | Build and deployment test | Sol / open |
 | PR-007 | P1 | Nginx lacks HSTS and explicit unknown-host handling; backend lacks TrustedHost middleware. | HTTPS downgrade and Host-header hardening are incomplete. | Add after final domains and HTTPS behavior are verified. | Deferred to Sprint 3.2 | External TLS and host-header test | Sol / open |
 | PR-008 | P1 | No verified alerts for readiness, disk, certificate expiry, backup age, database health, or 5xx errors. | Failures may be detected too late. | Configure and test external monitors and alert thresholds. | Deferred to Sprint 3.2 | Manual alert test | Release owner / open |
-| PR-014 | P1 | `npm audit --omit=dev` reported high advisories for transitive `postcss` and `nanoid`. | Build-time supply-chain risk remains. | Apply a separately approved dependency security patch or accept the risk formally. | Deferred to Sprint 3.2 / risk decision | Audit and CI build | Sol / open |
+| PR-014 | P1 | Both `npm audit` and `npm audit --omit=dev` report two high transitive advisories: `postcss` and `nanoid`; no critical advisory is reported. | Build-time supply-chain risk remains. | Run a separately approved lockfile security patch and repeat build, local E2E, and PWA validation; do not use automatic remediation in a launch change. | Open: explicit risk acceptance required before launch if not remediated | Audit and CI build | Sol / mitigation review due 2026-09-15; risk acceptance pending |
 
 ## Sprint 3.1 Automated Evidence
 
@@ -72,6 +72,30 @@ resolution or explicit risk acceptance before a final public GO decision.
 | Frontend build | Passed. |
 | Local E2E and PWA E2E | Passed: 12 local Chromium tests and 3 PWA Chromium tests. |
 | Diff integrity, mojibake, and secret scan | Passed: `git diff --check`, targeted encoding scan, and tracked deployment/source secret-identifier scan found no issues. |
+
+## Sprint 3.2 Local Rehearsal Status
+
+The repository now contains a disposable local production rehearsal runbook
+and script. A successful local run validates generated production-like
+configuration, image builds, one serialized migration, Nginx behavior, local
+backup and restore mechanics, and existing OCI smoke tests. It does not
+provide final-target evidence and therefore cannot close PR-001, PR-002, or
+PR-003.
+
+**Status:** Automatically verified locally on 2026-08-16 from the current
+release workspace. The disposable rehearsal built the OCI backend and web
+images, ran one explicit migration, verified Nginx and PWA headers, restored a
+synthetic PostgreSQL dump into an isolated target, and completed the OCI
+rate-limit and backup-enforcement smoke tests. It remains local preparation,
+not final-target evidence.
+
+## Sprint 3.2 Dependency Audit
+
+Both `npm audit` and `npm audit --omit=dev` were run on 2026-08-16. Each
+reported two high, transitive, fix-available advisories (`postcss` and
+`nanoid`) and no critical advisory. No dependency change was made in this
+sprint. Sol owns the separately reviewed remediation decision by 2026-09-15;
+launch before that remediation requires explicit written risk acceptance.
 
 ## Required Manual Evidence
 
