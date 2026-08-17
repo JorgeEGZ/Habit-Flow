@@ -17,6 +17,22 @@ database URLs, public IP addresses, object contents, or personal finance data.
 | RPO objective | 24 hours |
 | RTO objective | 4 hours |
 
+## Sprint 3.1.1 Evidence Collection Attempt
+
+| Field | Evidence |
+| --- | --- |
+| Attempt date | 2026-08-16 |
+| Source revision | `45c65f2cebc9b5b741bec85c10f723ee5aad555d` |
+| Repository worktree | Clean at the recorded revision |
+| Versioned CI workflow | Declares `backend`, `frontend`, `e2e`, and `pwa` jobs. This is not proof of their remote check-run conclusions. |
+| Remote CI check-run lookup | `PENDING`: GitHub Actions was unreachable from this operator environment. |
+| OCI CLI and production environment | `PENDING`: no OCI CLI, final domain, remote-smoke credentials, or external OCI environment file was available to this operator. |
+| Evidence conclusion | `NO-GO`: no final-target P0 evidence was collected during this attempt. |
+
+The rows below remain operational evidence fields. Replace `PENDING` only with
+reviewed, redacted results from the final target. Do not record secret values,
+identifiers, raw headers, or personal data.
+
 ## Off-VM Backup And Restore Rehearsal
 
 | Field | Evidence |
@@ -37,6 +53,18 @@ database URLs, public IP addresses, object contents, or personal finance data.
 | RPO objective met | `PENDING` |
 | RTO objective met | `PENDING` |
 | Isolated restored target removed after review | `PENDING` |
+
+## OCI Authentication Rate Limits
+
+| Evidence | Result |
+| --- | --- |
+| Final Nginx configuration contains the three exact auth locations | `PENDING` |
+| Login limit reaches 429 after the configured accepted burst | `PENDING` |
+| Register limit reaches 429 after the configured accepted burst | `PENDING` |
+| Refresh limit reaches 429 after the configured accepted burst | `PENDING` |
+| Repeated OPTIONS requests do not consume an auth quota | `PENDING` |
+| Health and unrelated business routes remain unaffected | `PENDING` |
+| Redacted warning-level Nginx rate-limit log reference | `PENDING` |
 
 ## Final Domain, TLS, Cookies, And Network
 
@@ -69,6 +97,23 @@ database URLs, public IP addresses, object contents, or personal finance data.
 | Force pushes and branch deletion blocked | `PENDING` |
 | Emergency bypass restricted and documented | `PENDING` |
 | Screenshot or redacted `gh api` output attached to release record | `PENDING` |
+
+## Remote Read-Only Smoke
+
+| Field | Evidence |
+| --- | --- |
+| Dedicated non-personal account confirmed | `PENDING` |
+| Command result: `npm --prefix frontend run test:e2e:remote` | `PENDING` |
+| Dashboard, profile, habits, savings, and finance navigation | `PENDING` |
+| Raw report or artifact location | `PENDING`: retain privately and record only a redacted reference or digest here. |
+
+## Evidence Review And Redaction
+
+| Field | Evidence |
+| --- | --- |
+| Raw evidence retained outside the repository | `PENDING` |
+| Redacted reference or digest recorded | `PENDING` |
+| Reviewer confirmed no secrets, identifiers, personal data, cookies, tokens, or signed URLs | `PENDING` |
 
 ## Sign-Off
 
