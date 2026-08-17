@@ -1,4 +1,9 @@
 export function getApiErrorMessage(error, fallback = 'Ha ocurrido un error.', options = {}) {
+  // OCI Nginx rate limits intentionally return a generic response body.
+  if (error?.response?.status === 429) {
+    return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.'
+  }
+
   const code = error?.response?.data?.error?.code
   const message = error?.response?.data?.error?.message
 

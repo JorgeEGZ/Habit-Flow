@@ -65,14 +65,20 @@ cutover guidance. The Oracle Cloud Free Tier single-VM Nginx option is
 documented in [deploy/oci/README.md](deploy/oci/README.md).
 The production release audit and operator checklist are available in
 [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) and
-[docs/PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md).
+[docs/PRODUCTION_CHECKLIST.md](docs/PRODUCTION_CHECKLIST.md). Record final
+infrastructure evidence with the redacted
+[docs/PRODUCTION_LAUNCH_EVIDENCE.md](docs/PRODUCTION_LAUNCH_EVIDENCE.md)
+template.
 
 ## Continuous Integration
 
 GitHub Actions runs required `backend`, `frontend`, `e2e`, and `pwa` checks for
 pull requests to `main` and pushes to `main`. The backend job runs Alembic
 against PostgreSQL; the existing backend test suite keeps its isolated SQLite
-fixtures.
+fixtures. A supplementary `deployment` job validates OCI Nginx rate limits,
+backup enforcement mocks, Compose placeholders, and POSIX shell syntax. Keep
+the four named checks as branch-protection requirements; repository settings
+must be verified separately.
 
 Remote read-only smoke tests are intentionally manual/deferred. A future
 cloud-neutral workflow will require `BASE_URL`, `E2E_EMAIL`, and

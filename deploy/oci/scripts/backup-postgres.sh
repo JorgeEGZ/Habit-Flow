@@ -14,6 +14,10 @@ require_safe_habitflow_dir "$BACKUP_DIR"
 case "$BACKUP_RETENTION_DAYS" in
   ''|*[!0-9]*) fail "BACKUP_RETENTION_DAYS must be a non-negative integer" ;;
 esac
+case "${OFFSITE_BACKUP_REQUIRED:-false}" in
+  true|false) ;;
+  *) fail "OFFSITE_BACKUP_REQUIRED must be true or false" ;;
+esac
 
 mkdir -p "$BACKUP_DIR"
 umask 077
@@ -40,23 +44,39 @@ mv "$temporary_backup" "$backup_file"
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'habitflow-*.dump' -mtime "+$BACKUP_RETENTION_DAYS" -delete
 find "$BACKUP_DIR" -maxdepth 1 -type f -name 'habitflow-*.dump.sha256' -mtime "+$BACKUP_RETENTION_DAYS" -delete
 
-if [ -n "${OCI_OBJECT_STORAGE_NAMESPACE:-}" ] || [ -n "${OCI_OBJECT_STORAGE_BUCKET:-}" ]; then
+offsite_requested=false
+if [ "${OFFSITE_BACKUP_REQUIRED:-false}" = true ] \
+  || [ -n "${OCI_OBJECT_STORAGE_NAMESPACE:-}" ] \
+  || [ -n "${OCI_OBJECT_STORAGE_BUCKET:-}" ]; then
+  offsite_requested=true
+fi
+
+if [ "$offsite_requested" = true ]; then
   require_var OCI_OBJECT_STORAGE_NAMESPACE
   require_var OCI_OBJECT_STORAGE_BUCKET
   require_command oci
-  echo "Uploading verified backup to OCI Object Storage."
-  oci os object put \
+  echo "Uploading verified backup to OCI Object Storage with instance-principal authentication."
+  oci --auth instance_principal os object put \
     --namespace "$OCI_OBJECT_STORAGE_NAMESPACE" \
     --bucket-name "$OCI_OBJECT_STORAGE_BUCKET" \
     --name "$backup_name" \
     --file "$backup_file" \
     --force
-  oci os object put \
+  oci --auth instance_principal os object put \
     --namespace "$OCI_OBJECT_STORAGE_NAMESPACE" \
     --bucket-name "$OCI_OBJECT_STORAGE_BUCKET" \
     --name "$backup_name.sha256" \
     --file "$checksum_file" \
     --force
+  oci --auth instance_principal os object head \
+    --namespace "$OCI_OBJECT_STORAGE_NAMESPACE" \
+    --bucket-name "$OCI_OBJECT_STORAGE_BUCKET" \
+    --name "$backup_name" >/dev/null
+  oci --auth instance_principal os object head \
+    --namespace "$OCI_OBJECT_STORAGE_NAMESPACE" \
+    --bucket-name "$OCI_OBJECT_STORAGE_BUCKET" \
+    --name "$backup_name.sha256" >/dev/null
+  echo "Verified remote dump and checksum objects."
 fi
 
 echo "Backup completed: $backup_file"

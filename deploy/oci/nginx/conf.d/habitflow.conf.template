@@ -38,16 +38,26 @@ server {
         try_files $uri =404;
     }
 
+    # These are the only public authentication endpoints limited at the OCI
+    # edge. The API remains responsible for its existing authentication and
+    # CSRF checks.
+    location = /api/v1/auth/login {
+        limit_req zone=auth_login burst=5 nodelay;
+        include /etc/nginx/habitflow-includes/api-proxy.conf;
+    }
+
+    location = /api/v1/auth/register {
+        limit_req zone=auth_register burst=2 nodelay;
+        include /etc/nginx/habitflow-includes/api-proxy.conf;
+    }
+
+    location = /api/v1/auth/refresh {
+        limit_req zone=auth_refresh burst=20 nodelay;
+        include /etc/nginx/habitflow-includes/api-proxy.conf;
+    }
+
     location /api/ {
-        proxy_pass http://backend:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-        proxy_read_timeout 60s;
+        include /etc/nginx/habitflow-includes/api-proxy.conf;
     }
 
     location = /index.html {

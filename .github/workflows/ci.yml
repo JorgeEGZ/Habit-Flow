@@ -134,6 +134,31 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  deployment:
+    name: deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate OCI Nginx authentication rate limits
+        run: sh deploy/oci/tests/nginx-rate-limit-smoke.sh
+
+      - name: Validate required off-VM backup enforcement
+        run: sh deploy/oci/tests/backup-postgres-smoke.sh
+
+      - name: Validate OCI Compose placeholders
+        env:
+          BACKEND_ENV_FILE: ${{ github.workspace }}/deploy/oci/backend.env.example
+          POSTGRES_ENV_FILE: ${{ github.workspace }}/deploy/oci/postgres.env.example
+        run: docker compose --env-file deploy/oci/.env.example -f deploy/oci/compose.yml config > /dev/null
+
+      - name: Validate OCI POSIX shell syntax
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/workspace:ro" -w /workspace alpine:3.20 \
+            sh -c 'for script in deploy/oci/scripts/*.sh deploy/oci/tests/*.sh; do sh -n "$script"; done'
+
   e2e:
     name: e2e
     needs: [backend, frontend]
